@@ -26,7 +26,7 @@ GetNodeIdFromContext (std::string context)
 static void
 CwndTracer (std::string context,  uint32_t oldval, uint32_t newval)
 {
-  NS_LOG_LOGIC("Called CwndTracer");
+  //NS_LOG_LOGIC("Called CwndTracer");
   uint32_t nodeId = GetNodeIdFromContext (context);
 
   if (firstCwnd[nodeId])
@@ -36,7 +36,7 @@ CwndTracer (std::string context,  uint32_t oldval, uint32_t newval)
     }
   *cWndStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << " " << newval << std::endl;
   cWndValue[nodeId] = newval;
-  NS_LOG_LOGIC("Finished CwndTracer");
+  //NS_LOG_LOGIC("Finished CwndTracer");
 }
 
 static void
@@ -53,132 +53,170 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
 
 int main(int argc, char *argv[])
 {
-    std::string transport_prot = "TcpWestwood";
+  std::string transport_prot = "TcpNewReno";
+  uint64_t data_mbytes = 0;
+  uint32_t mtu_bytes = 400;
+  double startTime = 0.0;
+  double stopTime = 25.0;
 
-    CommandLine cmd (__FILE__);
-    cmd.AddValue ("transport_prot", "Transport protocol to use: TcpNewReno, TcpLinuxReno, "
-                "TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, "
-                "TcpBic, TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, "
-		        "TcpLp, TcpDctcp, TcpCubic, TcpBbr", transport_prot);
-    cmd.Parse (argc, argv);
-    transport_prot = std::string ("ns3::") + transport_prot;
-    TypeId tcpTid;
-    NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
-    Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
 
-    LogComponentEnable ("RoutingTest", LOG_LEVEL_ALL);
-    LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
-    //LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
-    LogComponentEnable ("OnOffApplication", LOG_LEVEL_INFO);
-    //LogComponentEnable ("TcpServer", LOG_LEVEL_INFO);
-    //LogComponentEnable ("TcpL4Protocol", LOG_LEVEL_ALL);
-    //LogComponentEnable ("PacketSink", LOG_LEVEL_ALL);
-    Time::SetResolution (Time::NS);
-    Config::SetDefault ("ns3::OnOffApplication::PacketSize", UintegerValue (250));
-    Config::SetDefault ("ns3::OnOffApplication::DataRate", StringValue ("50kb/s"));
+  CommandLine cmd (__FILE__);
+  cmd.AddValue ("transport_prot", "Transport protocol to use: TcpNewReno, TcpLinuxReno, "
+              "TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, "
+              "TcpBic, TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, "
+              "TcpLp, TcpDctcp, TcpCubic, TcpBbr", transport_prot);
+  cmd.AddValue ("data", "Number of Megabytes of data to transmit", data_mbytes);
+  cmd.AddValue ("mtu", "Size of IP packets to send in bytes", mtu_bytes);
+  cmd.AddValue ("stopTime", "Time for the simulation to stop", stopTime);
+  cmd.Parse (argc, argv);
+  transport_prot = std::string ("ns3::") + transport_prot;
+  TypeId tcpTid;
+  NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
+  Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
 
-    NS_LOG_INFO("Creating Topology");
-    NodeContainer nodes;
-    nodes.Create (4);
+  LogComponentEnable ("RoutingTest", LOG_LEVEL_ALL);
+  //LogComponentEnable ("UdpEchoClientApplication", LOG_LEVEL_INFO);
+  //LogComponentEnable ("UdpEchoServerApplication", LOG_LEVEL_INFO);
+  //LogComponentEnable ("OnOffApplication", LOG_LEVEL_INFO);
+  LogComponentEnable ("BulkSendApplication", LOG_LEVEL_INFO);
+  //LogComponentEnable ("TcpServer", LOG_LEVEL_INFO);
+  //LogComponentEnable ("TcpL4Protocol", LOG_LEVEL_ALL);
+  //LogComponentEnable ("PacketSink", LOG_LEVEL_ALL);
+  Time::SetResolution (Time::NS);
+  //Config::SetDefault ("ns3::OnOffApplication::PacketSize", UintegerValue (250));
+  //Config::SetDefault ("ns3::OnOffApplication::DataRate", StringValue ("50kb/s"));
 
-    MobilityHelper mobility;
-    mobility.SetPositionAllocator("ns3::GridPositionAllocator",
-                                    "MinX", DoubleValue (5),
-                                    "MinY", DoubleValue (5),
-                                    "DeltaX", DoubleValue (5.0),
-                                    "DeltaY", DoubleValue (5.0),
-                                    "GridWidth", UintegerValue (2),
-                                    "LayoutType", StringValue ("RowFirst"));
-    //mobility.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
-    mobility.Install(nodes);
+  // Calculate the ADU size
+  Header* temp_header = new Ipv4Header ();
+  uint32_t ip_header = temp_header->GetSerializedSize ();
+  NS_LOG_LOGIC ("IP Header size is: " << ip_header);
+  delete temp_header;
+  temp_header = new TcpHeader ();
+  uint32_t tcp_header = temp_header->GetSerializedSize ();
+  NS_LOG_LOGIC ("TCP Header size is: " << tcp_header);
+  delete temp_header;
+  uint32_t tcp_adu_size = mtu_bytes - 20 - (ip_header + tcp_header);
+  NS_LOG_LOGIC ("TCP ADU size is: " << tcp_adu_size);
 
-    PointToPointHelper pointToPoint;
-    pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-    pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
 
-    NetDeviceContainer devices;
-    NetDeviceContainer Temp11 = pointToPoint.Install (nodes.Get(0), nodes.Get(1));
-    NetDeviceContainer Temp12 = pointToPoint.Install (nodes.Get(0), nodes.Get(2));
-    NetDeviceContainer Temp31 = pointToPoint.Install (nodes.Get(3), nodes.Get(1));
-    NetDeviceContainer Temp32 = pointToPoint.Install (nodes.Get(3), nodes.Get(2));
-    devices.Add(Temp11);devices.Add(Temp12);devices.Add(Temp31);devices.Add(Temp32);
+  NS_LOG_INFO("Creating Topology");
+  NodeContainer nodes;
+  nodes.Create (4);
 
-    InternetStackHelper stack;
-    stack.Install (nodes);
+  MobilityHelper mobility;
+  mobility.SetPositionAllocator("ns3::GridPositionAllocator",
+                                  "MinX", DoubleValue (5),
+                                  "MinY", DoubleValue (5),
+                                  "DeltaX", DoubleValue (5.0),
+                                  "DeltaY", DoubleValue (5.0),
+                                  "GridWidth", UintegerValue (2),
+                                  "LayoutType", StringValue ("RowFirst"));
+  //mobility.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
+  mobility.Install(nodes);
 
-    Ipv4AddressHelper address;
-    address.SetBase ("10.1.0.0", "255.255.0.255");
+  PointToPointHelper pointToPoint;
+  //pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Kbps"));
+  pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
 
-    Ipv4InterfaceContainer interfaces = address.Assign (devices);
+  NetDeviceContainer devices;
+  NetDeviceContainer Temp11 = pointToPoint.Install (nodes.Get(0), nodes.Get(1));
+  NetDeviceContainer Temp12 = pointToPoint.Install (nodes.Get(0), nodes.Get(2));
+  NetDeviceContainer Temp31 = pointToPoint.Install (nodes.Get(3), nodes.Get(1));
+  NetDeviceContainer Temp32 = pointToPoint.Install (nodes.Get(3), nodes.Get(2));
+  devices.Add(Temp11);devices.Add(Temp12);devices.Add(Temp31);devices.Add(Temp32);
 
-    Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+  InternetStackHelper stack;
+  stack.Install (nodes);
 
-    std::cout << interfaces.GetN() << std::endl;
+  Ipv4AddressHelper address;
+  address.SetBase ("10.1.0.0", "255.255.0.255");
 
-    UdpEchoServerHelper echoServer (9);
+  Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-    ApplicationContainer serverApps = echoServer.Install (nodes.Get (3));
-    serverApps.Start (Seconds (1.0));
-    serverApps.Stop (Seconds (10.0));
+  Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
-    /*UdpEchoClientHelper echoClient (interfaces.GetAddress (6), 9);
-    //Ptr<Ipv4InterfaceContainer> ClientAddress = nodes.Get(3)->GetObject<Ipv4InterfaceContainer>();
-    //Address Add3 = ClientAddress->GetAddress(0);
-    //UdpEchoClientHelper echoClient (nodes.Get(3)->GetObject<Ipv4InterfaceContainer>()->GetAddress(0), 9);
-    echoClient.SetAttribute ("MaxPackets", UintegerValue (1));
-    echoClient.SetAttribute ("Interval", TimeValue (Seconds (1.0)));
-    echoClient.SetAttribute ("PacketSize", UintegerValue (1024));
+  std::cout << interfaces.GetN() << std::endl;
 
-    ApplicationContainer clientApps = echoClient.Install (nodes.Get (0));
-    clientApps.Start (Seconds (2.0));
-    clientApps.Stop (Seconds (10.0));*/
+  UdpEchoServerHelper echoServer (9);
 
-    //
-    // Create an OnOff application to send UDP datagrams from node zero to node 1.
-    //
-    NS_LOG_INFO ("Create Applications.");
-    uint16_t port = 9;   // Discard port (RFC 863)
+  ApplicationContainer serverApps = echoServer.Install (nodes.Get (3));
+  serverApps.Start (Seconds (startTime + 1.0));
+  serverApps.Stop (Seconds (stopTime));
 
-    // Create an optional packet sink to receive these packets
-    PacketSinkHelper sink ("ns3::TcpSocketFactory",
-                            Address (InetSocketAddress (Ipv4Address::GetAny (), port)));
-    //ApplicationContainer app;
-    ApplicationContainer sinkApp;
-    sinkApp = sink.Install (nodes.Get (3));
-    sinkApp.Start (Seconds (0.0));
-    sinkApp.Stop(Seconds(10.0));
+  /*UdpEchoClientHelper echoClient (interfaces.GetAddress (6), 9);
+  //Ptr<Ipv4InterfaceContainer> ClientAddress = nodes.Get(3)->GetObject<Ipv4InterfaceContainer>();
+  //Address Add3 = ClientAddress->GetAddress(0);
+  //UdpEchoClientHelper echoClient (nodes.Get(3)->GetObject<Ipv4InterfaceContainer>()->GetAddress(0), 9);
+  echoClient.SetAttribute ("MaxPackets", UintegerValue (1));
+  echoClient.SetAttribute ("Interval", TimeValue (Seconds (1.0)));
+  echoClient.SetAttribute ("PacketSize", UintegerValue (1024));
 
-    // 
-    // Create a similar flow from n3 to n0, starting at time 1.1 seconds
-    //
-    OnOffHelper onoff ("ns3::TcpSocketFactory", Address());
-    onoff.SetConstantRate (DataRate ("500kb/s"));
+  ApplicationContainer clientApps = echoClient.Install (nodes.Get (0));
+  clientApps.Start (Seconds (startTime + 2.0));
+  clientApps.Stop (Seconds (stopTime));*/
 
-    onoff.SetAttribute ("Remote", 
-                        AddressValue (InetSocketAddress (Ipv4Address ("10.1.0.7"), port)));
-    onoff.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.2]"));
-    onoff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.8]"));
-    ApplicationContainer app;
-    app = onoff.Install (nodes.Get (0));
-    app.Start (Seconds (1.0));
-    app.Stop (Seconds (10.0));
+  //
+  // Create an application to send TCP Packets from node 0 to node 3.
+  //
+  NS_LOG_INFO ("Create Applications.");
+  uint16_t port = 9;   // Discard port (RFC 863)
 
-    //app = sink.Install (nodes.Get (0));
-    //app.Start (Seconds (0.0));
-    
-    // Trace routing tables 
-    Ipv4GlobalRoutingHelper g;
-    Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("RoutingTest1.routes", std::ios::out);
-    g.PrintRoutingTableAllAt (Seconds (1), routingStream);
+  // Create an packet sink to receive these packets
+  PacketSinkHelper sink ("ns3::TcpSocketFactory",
+                          Address (InetSocketAddress (Ipv4Address::GetAny (), port)));
+  //ApplicationContainer app;
+  ApplicationContainer sinkApp;
+  sinkApp = sink.Install (nodes.Get (3));
+  sinkApp.Start (Seconds (startTime));
+  sinkApp.Stop(Seconds(stopTime));
 
-    AsciiTraceHelper ascii;
-    pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/RoutingTest1.tr"));
-    pointToPoint.EnablePcapAll ("scratch/RoutingTest1");
-    firstCwnd[1] = true;
-    Simulator::Schedule (Seconds (1.00001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
-    AnimationInterface anim("RoutingTest1.xml");
-    Simulator::Run ();
-    Simulator::Stop(Seconds(10.0));
-    Simulator::Destroy ();
+  //
+  // Create BulktSend application
+  //
+
+  AddressValue remoteAddress (InetSocketAddress (Ipv4Address ("10.1.0.7"), port));
+  Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
+  BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
+  ftp.SetAttribute ("Remote", remoteAddress);
+  ftp.SetAttribute ("SendSize", UintegerValue (tcp_adu_size));
+  ftp.SetAttribute ("MaxBytes", UintegerValue (data_mbytes * 1000000));
+
+  ApplicationContainer sourceApp = ftp.Install (nodes.Get (0));
+  sourceApp.Start (Seconds (startTime + 1.0));
+  sourceApp.Stop (Seconds (stopTime));
+
+  // 
+  // Create a similar flow from n3 to n0, starting at time 1.1 seconds
+  //
+  /*OnOffHelper onoff ("ns3::TcpSocketFactory", Address());
+  onoff.SetConstantRate (DataRate ("500kb/s"));
+
+  onoff.SetAttribute ("Remote", 
+                      AddressValue (InetSocketAddress (Ipv4Address ("10.1.0.7"), port)));
+  onoff.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.2]"));
+  onoff.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.8]"));
+  ApplicationContainer app;
+  app = onoff.Install (nodes.Get (0));
+  app.Start (Seconds (startTime + 1.0));
+  app.Stop (Seconds (stopTime));*/
+
+  //app = sink.Install (nodes.Get (0));
+  //app.Start (Seconds (startTime));
+  
+  // Trace routing tables 
+  Ipv4GlobalRoutingHelper g;
+  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("RoutingTest1.routes", std::ios::out);
+  g.PrintRoutingTableAllAt (Seconds (1), routingStream);
+
+  AsciiTraceHelper ascii;
+  pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/RoutingTest1.tr"));
+  pointToPoint.EnablePcapAll ("scratch/RoutingTest1");
+  firstCwnd[1] = true;
+  Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
+  AnimationInterface anim("RoutingTest1.xml");
+  Simulator::Stop(Seconds(stopTime));
+  Simulator::Run ();
+  Simulator::Destroy ();
 
 }
