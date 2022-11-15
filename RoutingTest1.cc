@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
   std::string datarate = "5Kbps";
   std::string delay = "2ms";
   bool sack = false;
-  double startTime = 0.0;
+  double startTime = 0;
   double switchTime = 10.0;
   double stopTime = 25.0;
 
@@ -163,6 +163,9 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
+  //Simulator::Schedule (Seconds (0.0001),&Ipv4::SetDown,nodes.Get(0)->GetObject<Ipv4>(), 3);
+  //Ipv4::SetDown(nodes.Get(0)->GetObject<Ipv4>(), 3);
+  nodes.Get(0)->GetObject<Ipv4>()->SetDown(3);
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
   
 
@@ -204,8 +207,12 @@ int main(int argc, char *argv[])
   //
   // Create BulktSend application
   //
-
-  AddressValue remoteAddress (InetSocketAddress (Ipv4Address ("10.1.0.12"), port));
+  
+  //NS_LOG_INFO("NInterface of node is: " << dstNode.Get(0)->GetObject<Ipv4>()->GetNInterfaces());
+  //NS_LOG_INFO("NAddress of node is: " << dstNode.Get(0)->GetObject<Ipv4>()->GetNAddresses(1));
+  NS_LOG_INFO("Address of node is: " << dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress());
+  //AddressValue remoteAddress (InetSocketAddress (Ipv4Address ("10.1.0.12"), port));
+  AddressValue remoteAddress (InetSocketAddress (dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress(), port));
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
   BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
   ftp.SetAttribute ("Remote", remoteAddress);
@@ -235,14 +242,13 @@ int main(int argc, char *argv[])
   //app = sink.Install (nodes.Get (0));
   //app.Start (Seconds (startTime));
   
-  Simulator::Schedule (Seconds (0.0001),&Ipv4::SetDown,nodes.Get(0)->GetObject<Ipv4>(), 3);
   Simulator::Schedule (Seconds (switchTime),&Ipv4::SetDown,nodes.Get(0)->GetObject<Ipv4>(), 2);
   Simulator::Schedule (Seconds (switchTime),&Ipv4::SetUp,nodes.Get(0)->GetObject<Ipv4>(), 3);
 
   // Trace routing tables 
   Ipv4GlobalRoutingHelper g;
   Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("RoutingTest1.routes", std::ios::out);
-  g.PrintRoutingTableAllAt (Seconds (0.0001), routingStream);
+  g.PrintRoutingTableAllAt (Seconds (0), routingStream);
   Ptr<OutputStreamWrapper> routingStream2 = Create<OutputStreamWrapper> ("RoutingTest12.routes", std::ios::out);
   //g.PrintRoutingTableAllAt (Seconds (switchTime+1), routingStream2);
   g.PrintRoutingTableAllAt (Seconds (switchTime+0.0001), routingStream2);
@@ -253,7 +259,8 @@ int main(int argc, char *argv[])
   pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/RoutingTest1.tr"));
   pointToPoint.EnablePcapAll ("scratch/RoutingTest1");
   firstCwnd[0] = true;
-  Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
+  //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
   AnimationInterface anim("RoutingTest1.xml");
   Simulator::Stop(Seconds(stopTime));
   Simulator::Run ();
