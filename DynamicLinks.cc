@@ -54,38 +54,41 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
 }
 
 static void
-dynamicLinks (ns3::Time Period, NetDeviceContainer devCont)
+dynamicLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont)
 {
-  uint32_t NumNodes =  NodeList::GetNNodes();
+  uint32_t NumNodes =  srcOrbit.GetN();
   double dist;
-  for(uint32_t i=0; i<NumNodes/2; i++)
+  for(uint32_t i=0; i<srcOrbit.GetN(); i++)
   {
-    for(uint32_t j=NumNodes/2; j<NumNodes; j++)
+    for(uint32_t j=0; j<dstOrbit.GetN(); j++)
     {
       //Ptr<MobilityModel> m1 = NodeList::GetNode(i)->GetObject<MobilityModel>();
       //Ptr<MobilityModel> m2 = NodeList::GetNode(j)->GetObject<MobilityModel>();
       //dist = m1->GetDistanceFrom(m2);
-      dist = ns3::MobilityHelper::GetDistanceSquaredBetween(NodeList::GetNode(i), NodeList::GetNode(j));
+      dist = ns3::MobilityHelper::GetDistanceSquaredBetween(srcOrbit.Get(i), dstOrbit.Get(j));
       //int devIndex = i+(j-NumNodes/2);
       
-      int devIndex = NumNodes*i+2*(j-NumNodes/2);
-      int32_t intIndex =  NodeList::GetNode(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
-      NS_LOG_INFO("Distance between node "<<i<<" and node "<<j<<" is: "<<dist);
-      //NS_LOG_INFO("i="<<i<<" j="<<j<<" devIndex="<<devIndex<<" intIndex="<<intIndex<<" numInt="<<NodeList::GetNode(i)->GetObject<Ipv4>()->GetNInterfaces());
+      int devIndex = 2*(NumNodes*i+j);
+      //for(uint32_t k=0; k<devCont.GetN(); k++){
+      //uint32_t devIndex = k;
+      int32_t intIndex =  srcOrbit.Get(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
+      //NS_LOG_INFO("Distance between node "<<i<<" and node "<<j<<" is: "<<dist);
+      //NS_LOG_INFO("i="<<i<<" j="<<j<<" devIndex="<<devIndex<<" intIndex="<<intIndex<<" numInt="<<srcOrbit.Get(i)->GetObject<Ipv4>()->GetNInterfaces());
+      //}
       if(intIndex != -1)
       {
         if(dist>31.25)
         {
-          NodeList::GetNode(i)->GetObject<Ipv4>()->SetDown(intIndex);
+          srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
         }
         else
         {
-          NodeList::GetNode(i)->GetObject<Ipv4>()->SetUp(intIndex);
+          srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
         }
       }
     }
   }
-  Simulator::Schedule(Period, dynamicLinks, Period, devCont);
+  Simulator::Schedule(Period, dynamicLinks, Period, srcOrbit, dstOrbit, devCont);
 }
 
 static void
@@ -128,6 +131,8 @@ PrintPos(Ptr<const MobilityModel> mob)
 int main(int argc, char *argv[])
 {
   uint32_t numNodes = 4;
+  uint32_t srcIndex = 0;
+  uint32_t dstIndex = 0;
   std::string transport_prot = "TcpNewReno";
   uint64_t data_mbytes = 0;
   uint32_t mtu_bytes = 400;
@@ -144,6 +149,8 @@ int main(int argc, char *argv[])
 
   CommandLine cmd (__FILE__);
   cmd.AddValue ("numNodes", "Number of nodes in each orbit", numNodes);
+  cmd.AddValue ("srcIndex", "Index of the sending node in the source orbit", srcIndex);
+  cmd.AddValue ("dstIndex", "Index of the recieving node in the destination orbit", dstIndex);
   cmd.AddValue ("transport_prot", "Transport protocol to use: TcpNewReno, TcpLinuxReno, "
               "TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, "
               "TcpBic, TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, "
@@ -189,12 +196,19 @@ int main(int argc, char *argv[])
 
 
   NS_LOG_INFO("Creating Topology");
-  NodeContainer srcNodes, dstNodes;
-  srcNodes.Create (numNodes);
-  dstNodes.Create (numNodes);
-  NodeContainer allNodes(srcNodes, dstNodes);
+  NodeContainer srcOrbit, dstOrbit, srcNode, dstNode;
+  srcNode.Create (1); dstNode.Create (1);
+  srcOrbit.Create (numNodes);
+  dstOrbit.Create (numNodes);
+  NodeContainer allNodes(srcNode, dstNode, srcOrbit, dstOrbit);
+  
 
   MobilityHelper mobility;
+  ListPositionAllocator posAloc;
+  /*posAloc.Add(Vector(0,0,0));posAloc.Add(Vector(15,0,0));
+  mobility.SetPositionAllocator(&posAloc);
+  mobility.Install(srcNode.Get(0)); mobility.Install(dstNode.Get(0));*/
+  posAloc.Add(Vector(0,(5*(numNodes+srcIndex)),0)); mobility.SetPositionAllocator(&posAloc); mobility.Install(srcNode.Get(0));
   mobility.SetPositionAllocator("ns3::GridPositionAllocator",
                                   "MinX", DoubleValue (5),
                                   "MinY", DoubleValue (5*numNodes),
@@ -202,7 +216,7 @@ int main(int argc, char *argv[])
                                   "DeltaY", DoubleValue (5.0),
                                   "GridWidth", UintegerValue (1),
                                   "LayoutType", StringValue ("RowFirst"));
-  mobility.Install(srcNodes);
+  mobility.Install(srcOrbit);
   mobility.SetPositionAllocator("ns3::GridPositionAllocator",
                                   "MinX", DoubleValue (10),
                                   "MinY", DoubleValue (5),
@@ -211,10 +225,12 @@ int main(int argc, char *argv[])
                                   "GridWidth", UintegerValue (1),
                                   "LayoutType", StringValue ("RowFirst"));
   mobility.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
-  mobility.Install(dstNodes);
+  mobility.Install(dstOrbit); mobility.Install(dstNode);
+  dstNode.Get(0)->GetObject<ConstantVelocityMobilityModel>()->SetPosition(Vector(15,5*(1+dstIndex),0));
+  dstNode.Get(0)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,1,0));
   for(uint32_t i=0; i<numNodes; i++)
   {
-    dstNodes.Get(i)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,1,0));
+    dstOrbit.Get(i)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,1,0));
   }
 
   PointToPointHelper pointToPoint;
@@ -225,8 +241,8 @@ int main(int argc, char *argv[])
   NetDeviceContainer dstDevices;
   for(uint32_t i=0; i<numNodes-1; i++)
   {
-    NetDeviceContainer srcTemp = pointToPoint.Install(srcNodes.Get(i), srcNodes.Get(i+1));
-    NetDeviceContainer dstTemp = pointToPoint.Install(dstNodes.Get(i), dstNodes.Get(i+1));
+    NetDeviceContainer srcTemp = pointToPoint.Install(srcOrbit.Get(i), srcOrbit.Get(i+1));
+    NetDeviceContainer dstTemp = pointToPoint.Install(dstOrbit.Get(i), dstOrbit.Get(i+1));
     srcDevices.Add(srcTemp); dstDevices.Add(dstTemp);
   }
   
@@ -235,14 +251,19 @@ int main(int argc, char *argv[])
   {
     for(uint32_t j=0; j<numNodes; j++)
     {
-      NetDeviceContainer Temp = pointToPoint.Install(srcNodes.Get(i), dstNodes.Get(j));
+      NetDeviceContainer Temp = pointToPoint.Install(srcOrbit.Get(i), dstOrbit.Get(j));
       crossDevices.Add(Temp);
     }
   }
+  
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("10"+datarate));
+  pointToPoint.SetChannelAttribute ("Delay", StringValue ("0ms"));
+  NetDeviceContainer srcDevice = pointToPoint.Install(srcNode.Get(0), srcOrbit.Get(srcIndex));
+  NetDeviceContainer dstDevice = pointToPoint.Install(dstNode.Get(0), dstOrbit.Get(dstIndex));
 
   NetDeviceContainer devices;
-  devices.Add(srcDevices); devices.Add(dstDevices); devices.Add(crossDevices);
-
+  devices.Add(srcDevice); devices.Add(dstDevice); devices.Add(srcDevices); devices.Add(dstDevices); devices.Add(crossDevices);
+  
   InternetStackHelper stack;
   stack.Install (allNodes);
 
@@ -251,9 +272,7 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-  NS_LOG_INFO("Checkpoint1");
-  dynamicLinks(Seconds(DSP), crossDevices);
-  NS_LOG_INFO("Checkpoint2");
+  dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
@@ -267,7 +286,7 @@ int main(int argc, char *argv[])
   PacketSinkHelper sink ("ns3::TcpSocketFactory",
                           Address (InetSocketAddress (Ipv4Address::GetAny (), port)));
   ApplicationContainer sinkApp;
-  sinkApp = sink.Install (dstNodes.Get(0));
+  sinkApp = sink.Install (dstNode.Get(0));
   sinkApp.Start (Seconds (startTime));
   sinkApp.Stop(Seconds(stopTime));
 
@@ -275,15 +294,15 @@ int main(int argc, char *argv[])
   // Create BulkSend application
   //
   
-  NS_LOG_INFO("Address of node is: " << dstNodes.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress());
-  AddressValue remoteAddress (InetSocketAddress (dstNodes.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress(), port));
+  NS_LOG_INFO("Address of destination is: " << dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress());
+  AddressValue remoteAddress (InetSocketAddress (dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress(), port));
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
   BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
   ftp.SetAttribute ("Remote", remoteAddress);
   ftp.SetAttribute ("SendSize", UintegerValue (tcp_adu_size));
   ftp.SetAttribute ("MaxBytes", UintegerValue (data_mbytes * 1000000));
 
-  ApplicationContainer sourceApp = ftp.Install (srcNodes.Get (0));
+  ApplicationContainer sourceApp = ftp.Install (srcNode.Get (0));
   sourceApp.Start (Seconds (startTime));
   sourceApp.Stop (Seconds (stopTime));
 
@@ -303,7 +322,7 @@ int main(int argc, char *argv[])
 
   AsciiTraceHelper ascii;
   pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/P5/Traces/DynamicLinks.tr"));
-  pointToPoint.EnablePcapAll ("scratch/P5/Pcap/DynamicLinks");
+  pointToPoint.EnablePcapAll ("scratch/P5/Pcap/DynamicLinks/Node-Device");
   firstCwnd[0] = true;
   //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
