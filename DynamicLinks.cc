@@ -6,6 +6,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/mobility-module.h"
+#include "ns3/flow-monitor-helper.h"
 
 using namespace ns3;
 
@@ -130,20 +131,20 @@ PrintPos(Ptr<const MobilityModel> mob)
 
 int main(int argc, char *argv[])
 {
-  uint32_t numNodes = 4;
+  uint32_t numNodes = 3;
   uint32_t srcIndex = 0;
   uint32_t dstIndex = 0;
   std::string transport_prot = "TcpNewReno";
   uint64_t data_mbytes = 0;
   uint32_t mtu_bytes = 400;
-  std::string bottleneckRate = "2Kbps";
-  std::string bottleneckDelay = "10ms";
+  //std::string bottleneckRate = "2Kbps";
+  //std::string bottleneckDelay = "10ms";
   std::string datarate = "5Kbps";
-  std::string delay = "2ms";
+  std::string delay = "20ms";
   bool sack = false;
   double DSP = 1;
   double startTime = 0;
-  double switchTime = 10.0;
+  //double switchTime = 10.0;
   double stopTime = 25.0;
 
 
@@ -155,15 +156,15 @@ int main(int argc, char *argv[])
               "TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, "
               "TcpBic, TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, "
               "TcpLp, TcpDctcp, TcpCubic, TcpBbr", transport_prot);
-  cmd.AddValue ("data", "Number of Megabytes of data to transmit", data_mbytes);
+  cmd.AddValue ("data", "Number of Megabytes of data to transmit (0 means unlimited)", data_mbytes);
   cmd.AddValue ("mtu", "Size of IP packets to send in bytes", mtu_bytes);
-  cmd.AddValue ("bottleneckRate", "Datarate of bottleneck point to point links", bottleneckRate);
-  cmd.AddValue ("bottleneckDelay", "Delay of bottleneck point to point links", bottleneckDelay);
+  //cmd.AddValue ("bottleneckRate", "Datarate of bottleneck point to point links", bottleneckRate);
+  //cmd.AddValue ("bottleneckDelay", "Delay of bottleneck point to point links", bottleneckDelay);
   cmd.AddValue ("datarate", "Datarate of point to point links", datarate);
   cmd.AddValue ("delay", "Delay of point to point links", delay);
   cmd.AddValue ("sack", "Enable or disable SACK option", sack);
   cmd.AddValue ("DSP", "Distance Sampling Period", DSP);
-  cmd.AddValue ("switchTime", "Time for the route to swtich", switchTime);
+  //cmd.AddValue ("switchTime", "Time for the route to swtich", switchTime);
   cmd.AddValue ("stopTime", "Time for the simulation to stop", stopTime);
   cmd.Parse (argc, argv);
   transport_prot = std::string ("ns3::") + transport_prot;
@@ -313,6 +314,13 @@ int main(int argc, char *argv[])
   //Ptr<OutputStreamWrapper> routingStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLink2.routes", std::ios::out);
   //g.PrintRoutingTableAllAt (Seconds (switchTime+1), routingStream2);
   //g.PrintRoutingTableAllAt (Seconds (switchTime+0.0001), routingStream2);
+  //Ptr<OutputStreamWrapper> routingStreams[int(stopTime)];
+  //for(int i=0; i<int(stopTime); i++)
+  //{
+    //routingStreams[i] = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks/" + std::to_string(i) + ".routes");
+  //  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks/" + std::to_string(i) + ".routes", std::ios::out);
+  //  g.PrintRoutingTableAllAt (Seconds (i), routingStream);
+  //}
 
   //Simulator::Schedule(Seconds(5), PrintPos, dstNodes.Get(0)->GetObject<MobilityModel>());
   //Config::Connect ("/NodeList/1/ApplicationList/*/$ns3::PacketSink/Rx", MakeCallback (&PosTracer));
@@ -326,9 +334,17 @@ int main(int argc, char *argv[])
   firstCwnd[0] = true;
   //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
-  AnimationInterface anim("scratch/P5/Animations/DynamicLinks.xml");
+  AnimationInterface anim("scratch/P5/Animations/DynamicLinks/Animation.xml");
+  anim.SetMobilityPollInterval(Seconds(DSP));
+  //anim.EnablePacketMetadata(true);
+  anim.EnableIpv4RouteTracking("scratch/P5/Animations/DynamicLinks/Routes.xml", Seconds(startTime), Seconds(stopTime), Seconds(DSP));
+  FlowMonitorHelper flowHelper;
+  flowHelper.InstallAll();
+  //anim.AddSourceDestination(0, "10.1.0.3");
   Simulator::Stop(Seconds(stopTime));
   Simulator::Run ();
+  //flowHelper.SerializeToXmlFile("scratch/P5/Animations/DynamicLinks/FlowMonitor.xml", true, true);
+  flowHelper.SerializeToXmlFile("scratch/P5/Animations/DynamicLinks/FlowMonitor.xml", false, false);
   Simulator::Destroy ();
 
 }

@@ -7,6 +7,7 @@
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/mobility-module.h"
+#include "ns3/flow-monitor-helper.h"
 
 using namespace ns3;
 
@@ -19,16 +20,42 @@ static Ptr<OutputStreamWrapper> PosStream = Create<OutputStreamWrapper> ("scratc
 static Ptr<OutputStreamWrapper> PosStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/VariableLinks2.Pos", std::ios::out);
 static double speff_thresholds[] = {0,0.434841,0.490243,0.567805,0.656448,0.789412,0.889135,0.988858,1.088581,1.188304,1.322253,1.487473,1.587196,1.647211,1.713601,1.779991,1.972253,2.10485,2.193247,2.370043,2.458441,2.524739,2.635236,2.637201,2.745734,2.856231,2.966728,3.077225,3.165623,3.289502,3.300184,3.510192,3.620536,3.703295,3.841226,3.951571,4.206428,4.338659,4.603122,4.735354,4.933701,5.06569,5.241514,5.417338,5.593162,5.768987,5.900855};
 static double lin_thresholds[] = {1e-10,0.5188000389,0.5821032178,0.6266138647,0.751622894,0.9332543008,1.051961874,1.258925412,1.396368361,1.671090614,2.041737945,2.529297996,2.937649652,2.971666032,3.25836701,3.548133892,3.953666201,4.518559444,4.83058802,5.508076964,6.45654229,6.886522963,6.966265141,7.888601176,8.452788452,9.354056741,10.49542429,11.61448614,12.67651866,12.88249552,14.48771854,14.96235656,16.48162392,18.74994508,20.18366364,23.1206479,25.00345362,30.26913428,35.2370871,38.63669771,45.18559444,49.88844875,52.96634439,64.5654229,72.27698036,76.55966069,90.57326009};
-double SOL = 299792458;             // Speed of light in m/s
-double boltzmann = 1.38e-23;
+static double SOL = 299792458;             // Speed of light in m/s
+static double boltzmann = 1.38e-23;
 
-struct {
-  double frequency;
-  double power_dB;
-  double fullGain;
-  double noise;
-  double bandwidth;
-}VLFuncStruct;          // VariableLinks function struct
+// Adjustable variables
+uint32_t numNodes = 1;
+uint32_t srcIndex = 0;
+uint32_t dstIndex = 0;
+std::string transport_prot = "TcpNewReno";
+uint64_t data_mbytes = 0;
+uint32_t mtu_bytes = 400;
+std::string datarate = "5Kbps";   // Remove later
+std::string delay = "2ms";        // Remove later
+double speed = 200000;
+double ISD = 5000000;
+double COD = 5600000;
+bool sack = false;
+uint32_t initCwnd = 10;
+double DSP = 1;
+double startTime = 0;
+double switchTime = 10.0;
+double stopTime = 25.0;
+
+double power = 10;
+double frequency = 26e9;
+double bandwidth = 500e6;
+double aDiameterTx = 0.26;
+double aDiameterRx = 0.26;
+double noiseFigure = 2;
+double noiseTemperature = 290;
+double pointingLoss = 0.3;
+double efficiency = 0.55;
+
+// Calculated Variables
+double fullGain;
+double power_dB;
+double noise;
 
 static uint32_t
 GetNodeIdFromContext (std::string context)
@@ -103,11 +130,11 @@ static void
 variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont)
                 //, double frequency, double power_dB, double fullGain, double noise, double bandwidth)
 {
-  double frequency = VLFuncStruct.frequency;
-  double power_dB = VLFuncStruct.power_dB;
-  double fullGain = VLFuncStruct.fullGain;
-  double noise = VLFuncStruct.noise;
-  double bandwidth = VLFuncStruct.bandwidth;
+  //double frequency = VLFuncStruct.frequency;
+  //double power_dB = VLFuncStruct.power_dB;
+  //double fullGain = VLFuncStruct.fullGain;
+  //double noise = VLFuncStruct.noise;
+  //double bandwidth = VLFuncStruct.bandwidth;
   uint32_t NumNodes =  srcOrbit.GetN();
   double dist;
   for(uint32_t i=0; i<srcOrbit.GetN(); i++)
@@ -150,7 +177,7 @@ variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit,
       }
       else
       {
-        srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
+        srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
         devCont.Get(devIndex)->SetAttribute("DataRate", StringValue(std::to_string(datarate) + "bps"));
         devCont.Get(devIndex)->GetChannel()->SetAttribute("Delay", StringValue(std::to_string(dist/SOL) + "s"));
       }
@@ -161,7 +188,7 @@ variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit,
 
 int main(int argc, char *argv[])
 {
-  uint32_t numNodes = 1;
+  /*uint32_t numNodes = 1;
   uint32_t srcIndex = 0;
   uint32_t dstIndex = 0;
   std::string transport_prot = "TcpNewReno";
@@ -186,7 +213,7 @@ int main(int argc, char *argv[])
   double noiseFigure = 2;
   double noiseTemperature = 290;
   double pointingLoss = 0.3;
-  double efficiency = 0.55;
+  double efficiency = 0.55;*/
 
   CommandLine cmd (__FILE__);
   cmd.AddValue ("numNodes", "Number of nodes in each orbit", numNodes);
@@ -202,6 +229,7 @@ int main(int argc, char *argv[])
   cmd.AddValue ("ISD", "Inter-satellite distance in meters", ISD);
   cmd.AddValue ("COD", "Cutoff distance for RF links in meters", COD);
   cmd.AddValue ("sack", "Enable or disable SACK option", sack);
+  cmd.AddValue ("initCwnd", "Initial size of the congestion window in segments", initCwnd);
   cmd.AddValue ("DSP", "Distance Sampling Period", DSP);
   cmd.AddValue ("switchTime", "Time for the route to swtich", switchTime);
   cmd.AddValue ("stopTime", "Time for the simulation to stop", stopTime);
@@ -221,6 +249,7 @@ int main(int argc, char *argv[])
   NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
   Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
   Config::SetDefault ("ns3::TcpSocketBase::Sack", BooleanValue (sack));
+  Config::SetDefault ("ns3::TcpSocket::InitialCwnd", UintegerValue(initCwnd));
   Config::SetDefault ("ns3::Ipv4GlobalRouting::RespondToInterfaceEvents", BooleanValue (true));
 
   LogComponentEnable ("VariableLinks", LOG_LEVEL_ALL);
@@ -317,13 +346,13 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-  VLFuncStruct.power_dB = 10*log10(power);
+  power_dB = 10*log10(power);
   double txGain = 10*log10(efficiency*(pow(M_PI*aDiameterTx*frequency/SOL,2)));
   double rxGain = 10*log10(efficiency*(pow(M_PI*aDiameterRx*frequency/SOL,2)));
-  VLFuncStruct.fullGain = rxGain + txGain - 2*pointingLoss;
-  VLFuncStruct.noise = 10*log10(bandwidth*boltzmann) + noiseFigure + 10*log10(290 + (noiseTemperature - 290)*pow(10, -noiseFigure/10));
-  VLFuncStruct.frequency = frequency;
-  VLFuncStruct.bandwidth = bandwidth;
+  fullGain = rxGain + txGain - 2*pointingLoss;
+  noise = 10*log10(bandwidth*boltzmann) + noiseFigure + 10*log10(290 + (noiseTemperature - 290)*pow(10, -noiseFigure/10));
+  frequency = frequency;
+  bandwidth = bandwidth;
   variableLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
   //dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
 
@@ -359,15 +388,37 @@ int main(int argc, char *argv[])
   sourceApp.Start (Seconds (startTime));
   sourceApp.Stop (Seconds (stopTime));
 
+  // Trace routing tables 
+  Ipv4GlobalRoutingHelper g;
+  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/VariableLinks1.routes", std::ios::out);
+  g.PrintRoutingTableAllAt (Seconds (0), routingStream);
+  Ptr<OutputStreamWrapper> routingStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/VariableLinks2.routes", std::ios::out);
+  g.PrintRoutingTableAllAt (Seconds (switchTime+1), routingStream2);
+  //g.PrintRoutingTableAllAt (Seconds (switchTime+0.0001), routingStream2);
+  //Ptr<OutputStreamWrapper> routingStreams[int(stopTime)];
+  //for(int i=0; i<int(stopTime); i++)
+  //{
+    //routingStreams[i] = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks/" + std::to_string(i) + ".routes");
+  //  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks/" + std::to_string(i) + ".routes", std::ios::out);
+  //  g.PrintRoutingTableAllAt (Seconds (i), routingStream);
+  //}
+
   AsciiTraceHelper ascii;
   pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/P5/Traces/VariableLinks.tr"));
   pointToPoint.EnablePcapAll ("scratch/P5/Pcap/VariableLinks/Node-Device");
   firstCwnd[0] = true;
   //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/VariableLinks-cwnd.data", 0);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/VariableLinks-cwnd.data", 0);
-  AnimationInterface anim("scratch/P5/Animations/VariableLinks.xml");
+  AnimationInterface anim("scratch/P5/Animations/VariableLinks/Animation.xml");
+  anim.SetMobilityPollInterval(Seconds(DSP));
+  //anim.SetMobilityPollInterval(Seconds(0.1));
+  //anim.EnablePacketMetadata(true);
+  anim.EnableIpv4RouteTracking("scratch/P5/Animations/VariableLinks/Routes.xml", Seconds(startTime), Seconds(stopTime), Seconds(DSP));
+  FlowMonitorHelper flowHelper;
+  flowHelper.InstallAll();
   Simulator::Stop(Seconds(stopTime));
   Simulator::Run ();
+  flowHelper.SerializeToXmlFile("scratch/P5/Animations/VariableLinks/FlowMonitor.xml", true, true);
   Simulator::Destroy ();
 
 }

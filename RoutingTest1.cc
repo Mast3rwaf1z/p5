@@ -201,6 +201,7 @@ int main(int argc, char *argv[])
   //ApplicationContainer app;
   ApplicationContainer sinkApp;
   sinkApp = sink.Install (dstNode.Get(0));
+  //sinkApp = sink.Install (nodes.Get(1));
   sinkApp.Start (Seconds (startTime));
   sinkApp.Stop(Seconds(stopTime));
 
@@ -213,6 +214,7 @@ int main(int argc, char *argv[])
   NS_LOG_INFO("Address of node is: " << dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress());
   //AddressValue remoteAddress (InetSocketAddress (Ipv4Address ("10.1.0.12"), port));
   AddressValue remoteAddress (InetSocketAddress (dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress(), port));
+  //AddressValue remoteAddress (InetSocketAddress (Ipv4Address ("10.1.0.4"), port));
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
   BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
   ftp.SetAttribute ("Remote", remoteAddress);
@@ -244,24 +246,27 @@ int main(int argc, char *argv[])
   
   Simulator::Schedule (Seconds (switchTime),&Ipv4::SetDown,nodes.Get(0)->GetObject<Ipv4>(), 2);
   Simulator::Schedule (Seconds (switchTime),&Ipv4::SetUp,nodes.Get(0)->GetObject<Ipv4>(), 3);
+  //Simulator::Schedule (Seconds (switchTime+1), ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables);
 
   // Trace routing tables 
   Ipv4GlobalRoutingHelper g;
-  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("RoutingTest1.routes", std::ios::out);
+  Ptr<OutputStreamWrapper> routingStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/RoutingTest1.routes", std::ios::out);
   g.PrintRoutingTableAllAt (Seconds (0), routingStream);
-  Ptr<OutputStreamWrapper> routingStream2 = Create<OutputStreamWrapper> ("RoutingTest12.routes", std::ios::out);
+  Ptr<OutputStreamWrapper> routingStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/RoutingTest12.routes", std::ios::out);
   //g.PrintRoutingTableAllAt (Seconds (switchTime+1), routingStream2);
   g.PrintRoutingTableAllAt (Seconds (switchTime+0.0001), routingStream2);
+  //Ptr<OutputStreamWrapper> routingStream3 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/RoutingTest13.routes", std::ios::out);
+  //g.PrintRoutingTableAllAt (Seconds (switchTime+1.0001), routingStream3);
 
   
 
   AsciiTraceHelper ascii;
-  pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/RoutingTest1.tr"));
-  pointToPoint.EnablePcapAll ("scratch/RoutingTest1");
+  pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/P5/Traces/RoutingTest1.tr"));
+  pointToPoint.EnablePcapAll ("scratch/P5/Pcap/RoutingTest1");
   firstCwnd[0] = true;
-  //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
-  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/RoutingTest1-cwnd.data", 0);
-  AnimationInterface anim("RoutingTest1.xml");
+  //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/RoutingTest1-cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/RoutingTest1-cwnd.data", 0);
+  AnimationInterface anim("scratch/P5/Animations/RoutingTest1.xml");
   Simulator::Stop(Seconds(stopTime));
   Simulator::Run ();
   Simulator::Destroy ();
