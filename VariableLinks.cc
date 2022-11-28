@@ -30,8 +30,7 @@ uint32_t dstIndex = 0;
 std::string transport_prot = "TcpNewReno";
 uint64_t data_mbytes = 0;
 uint32_t mtu_bytes = 400;
-std::string datarate = "5Kbps";   // Remove later
-std::string delay = "2ms";        // Remove later
+double error_p = 0.0;
 double speed = 200000;
 double ISD = 5000000;
 double COD = 5600000;
@@ -93,48 +92,26 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
   NS_LOG_LOGIC("Finished TraceCwnd");
 }
 
-static void
-dynamicLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont)
+static double
+calculateDatarate(double dist)
 {
-  uint32_t NumNodes =  srcOrbit.GetN();
-  double dist;
-  for(uint32_t i=0; i<srcOrbit.GetN(); i++)
+  double path_loss_dB = 10*log10(pow(4*M_PI*dist*frequency/SOL, 2));
+  double SNR = pow(10, (power_dB + fullGain - path_loss_dB - noise)/10);
+  std::cout << "\tSNR = pow(10, (" << power_dB << " + " << fullGain << " - " << path_loss_dB << " - " << noise << ")/10) = " << SNR << std::endl;
+  int Index = 0;
+  for(int k=0; k<sizeof(lin_thresholds)/sizeof(double); k++)
   {
-    for(uint32_t j=0; j<dstOrbit.GetN(); j++)
-    {
-      Ptr<MobilityModel> m1 = srcOrbit.Get(i)->GetObject<MobilityModel>();
-      Ptr<MobilityModel> m2 = dstOrbit.Get(j)->GetObject<MobilityModel>();
-      dist = m1->GetDistanceFrom(m2);
-      //dist = ns3::MobilityHelper::GetDistanceSquaredBetween(srcOrbit.Get(i), dstOrbit.Get(j));
-      int devIndex = 2*(NumNodes*i+j);
-      int32_t intIndex =  srcOrbit.Get(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
-      //NS_LOG_INFO("Distance between node "<<i<<" and node "<<j<<" is: "<<dist);
-      //NS_LOG_INFO("i="<<i<<" j="<<j<<" devIndex="<<devIndex<<" intIndex="<<intIndex<<" numInt="<<srcOrbit.Get(i)->GetObject<Ipv4>()->GetNInterfaces());
-      if(intIndex != -1)
-      {
-        if(dist>31.25)
-        {
-          srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
-        }
-        else
-        {
-          srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
-        }
-      }
-    }
+    if(lin_thresholds[k] <= SNR){Index = k;} else{break;}
   }
-  Simulator::Schedule(Period, dynamicLinks, Period, srcOrbit, dstOrbit, devCont);
+  double speff = speff_thresholds[Index];
+  NS_LOG_INFO("\t" << lin_thresholds[Index-1] << "\t" << SNR << "\t" << lin_thresholds[Index]);
+  double datarate = speff*bandwidth;
+  return datarate;
 }
 
 static void
-variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont)
-                //, double frequency, double power_dB, double fullGain, double noise, double bandwidth)
+variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont, RateErrorModel errArr[])
 {
-  //double frequency = VLFuncStruct.frequency;
-  //double power_dB = VLFuncStruct.power_dB;
-  //double fullGain = VLFuncStruct.fullGain;
-  //double noise = VLFuncStruct.noise;
-  //double bandwidth = VLFuncStruct.bandwidth;
   uint32_t NumNodes =  srcOrbit.GetN();
   double dist;
   for(uint32_t i=0; i<srcOrbit.GetN(); i++)
@@ -145,76 +122,36 @@ variableLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit,
       Ptr<MobilityModel> m1 = srcOrbit.Get(i)->GetObject<MobilityModel>();
       Ptr<MobilityModel> m2 = dstOrbit.Get(j)->GetObject<MobilityModel>();
       dist = m1->GetDistanceFrom(m2);
-      int devIndex = 2*(NumNodes*i+j);
+      int errorIndex = numNodes*i+j;
+      ///int devIndex = 2*(NumNodes*i+j);
+      int devIndex = 2*errorIndex;
       int32_t intIndex =  srcOrbit.Get(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
-      std::cout << "\tDistance: " << dist << std::endl;
-      double path_loss_dB = 10*log10(pow(4*M_PI*dist*frequency/SOL, 2));
-      std::cout << "\tSNR = pow(10, (" << power_dB << " + " << fullGain << " - " << path_loss_dB << " - " << noise << ")/10)" << std::endl;
-      double SNR = pow(10, (power_dB + fullGain - path_loss_dB - noise)/10);
-      int Index = 0;
-      std::cout << "\tindex is: " << Index << std::endl;
-      //while(lin_thresholds[Index]<=SNR){Index++;}
-      for(int k=0; k<sizeof(lin_thresholds)/sizeof(double); k++)
-      {
-        if(lin_thresholds[k] <= SNR){Index = k;} else{break;}
-      }
-      std::cout << "\tindex is: " << Index << std::endl;
-      std::cout << "\t" << lin_thresholds[Index-1] << "\t" << SNR << "\t" << lin_thresholds[Index] << std::endl;
-      double speff = speff_thresholds[Index];
-
-      double datarate = speff*bandwidth;
-      /*Config::Set("/NodeList/" + std::to_string(srcOrbit.Get(i)->GetId()) + "/DeviceList/" +
-                  std::to_string(devCont.Get(devIndex)->GetIfIndex()) + "/$ns3::PointToPointNetDevice/DataRate",
-                  StringValue(std::to_string(datarate) + "bps"));
-      Config::Set("/NodeList/" + std::to_string(srcOrbit.Get(i)->GetId()) + "/ChannelList/" +
-                  std::to_string(devCont.Get(devIndex)->GetIfIndex()) + "/$ns3::PointToPointChannel/Delay",
-                  StringValue(StringValue(std::to_string(dist/SOL) + "s")));*/
-      std::cout << "\tDataRate is: " << std::to_string(datarate) << std::endl;
-      std::cout << "\tDelay is: " << std::to_string(dist/SOL) << std::endl;
+      NS_LOG_INFO(Simulator::Now().GetSeconds()<<"s: Link stats between node "<<i<<" and "<<j<<":");
+      double datarate = calculateDatarate(dist);
+      NS_LOG_INFO("\tDistance is: " << std::to_string(dist));
+      NS_LOG_INFO("\tDataRate is: " << std::to_string(datarate));
+      NS_LOG_INFO("\tDelay is: " << std::to_string(dist/SOL));
       if(datarate <= 0)
       {
         srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
+        errArr[errorIndex].SetRate(1.0);
+        NS_LOG_INFO("Checkpoint1");
       }
       else
       {
         srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
         devCont.Get(devIndex)->SetAttribute("DataRate", StringValue(std::to_string(datarate) + "bps"));
         devCont.Get(devIndex)->GetChannel()->SetAttribute("Delay", StringValue(std::to_string(dist/SOL) + "s"));
+        errArr[errorIndex].SetRate(error_p);
+        NS_LOG_INFO("Checkpoint2");
       }
     }
   }
-  Simulator::Schedule(Period, variableLinks, Period, srcOrbit, dstOrbit, devCont);
+  Simulator::Schedule(Period, variableLinks, Period, srcOrbit, dstOrbit, devCont, errArr);
 }
 
 int main(int argc, char *argv[])
 {
-  /*uint32_t numNodes = 1;
-  uint32_t srcIndex = 0;
-  uint32_t dstIndex = 0;
-  std::string transport_prot = "TcpNewReno";
-  uint64_t data_mbytes = 0;
-  uint32_t mtu_bytes = 400;
-  std::string datarate = "5Kbps";   // Remove later
-  std::string delay = "2ms";        // Remove later
-  double speed = 7500;
-  double ISD = 5000000;
-  double COD = 5600000;
-  bool sack = false;
-  double DSP = 1;
-  double startTime = 0;
-  double switchTime = 10.0;
-  double stopTime = 25.0;
-
-  double power = 10;
-  double frequency = 26e9;
-  double bandwidth = 500e6;
-  double aDiameterTx = 0.26;
-  double aDiameterRx = 0.26;
-  double noiseFigure = 2;
-  double noiseTemperature = 290;
-  double pointingLoss = 0.3;
-  double efficiency = 0.55;*/
-
   CommandLine cmd (__FILE__);
   cmd.AddValue ("numNodes", "Number of nodes in each orbit", numNodes);
   cmd.AddValue ("srcIndex", "Index of the sending node in the source orbit", srcIndex);
@@ -225,6 +162,7 @@ int main(int argc, char *argv[])
               "TcpLp, TcpDctcp, TcpCubic, TcpBbr", transport_prot);
   cmd.AddValue ("data", "Number of Megabytes of data to transmit", data_mbytes);
   cmd.AddValue ("mtu", "Size of IP packets to send in bytes", mtu_bytes);
+  cmd.AddValue ("error_p", "Packet error rate", error_p);
   cmd.AddValue ("speed", "Movement speed of the satellites in orbit", speed);
   cmd.AddValue ("ISD", "Inter-satellite distance in meters", ISD);
   cmd.AddValue ("COD", "Cutoff distance for RF links in meters", COD);
@@ -254,10 +192,18 @@ int main(int argc, char *argv[])
 
   LogComponentEnable ("VariableLinks", LOG_LEVEL_ALL);
   //LogComponentEnable ("BulkSendApplication", LOG_LEVEL_FUNCTION);
-  //LogComponentEnable ("TcpServer", LOG_LEVEL_INFO);
   //LogComponentEnable ("TcpL4Protocol", LOG_LEVEL_ALL);
   //LogComponentEnable ("PacketSink", LOG_LEVEL_ALL);
   Time::SetResolution (Time::US);
+
+  // Calculate stuff needed for datarate calculations
+  power_dB = 10*log10(power);
+  double txGain = 10*log10(efficiency*(pow(M_PI*aDiameterTx*frequency/SOL,2)));
+  double rxGain = 10*log10(efficiency*(pow(M_PI*aDiameterRx*frequency/SOL,2)));
+  fullGain = rxGain + txGain - 2*pointingLoss;
+  noise = 10*log10(bandwidth*boltzmann) + noiseFigure + 10*log10(290 + (noiseTemperature - 290)*pow(10, -noiseFigure/10));
+  frequency = frequency;
+  bandwidth = bandwidth;
 
   // Calculate the ADU size
   Header* temp_header = new Ipv4Header ();
@@ -307,9 +253,14 @@ int main(int argc, char *argv[])
     dstOrbit.Get(i)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,speed,0));
   }
 
+  double datarate = calculateDatarate(ISD);
+  double delay = ISD/SOL;
+  NS_LOG_INFO("Initial datarate: " << datarate);
+  NS_LOG_INFO("Initial delay: " << delay);
+
   PointToPointHelper pointToPoint;
-  pointToPoint.SetDeviceAttribute ("DataRate", StringValue (datarate));
-  pointToPoint.SetChannelAttribute ("Delay", StringValue (delay));
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue (std::to_string(datarate) + "bps"));
+  pointToPoint.SetChannelAttribute ("Delay", StringValue (std::to_string(delay) + "s"));
 
   NetDeviceContainer srcDevices;
   NetDeviceContainer dstDevices;
@@ -320,18 +271,34 @@ int main(int argc, char *argv[])
     srcDevices.Add(srcTemp); dstDevices.Add(dstTemp);
   }
   
+  // Creating the error models
+  Ptr<UniformRandomVariable> uv = CreateObject<UniformRandomVariable> ();
+  uv->SetStream (50);
+  RateErrorModel errorModels[numNodes*numNodes];
+  for(int i=0; i<numNodes*numNodes; i++)
+  {
+    errorModels[i].SetRandomVariable (uv);
+    errorModels[i].SetUnit (RateErrorModel::ERROR_UNIT_PACKET);
+    errorModels[i].SetRate (error_p);
+  }
   NetDeviceContainer crossDevices;
   for(uint32_t i=0; i<numNodes; i++)
   {
     for(uint32_t j=0; j<numNodes; j++)
     {
+      pointToPoint.SetDeviceAttribute ("ReceiveErrorModel", PointerValue(&errorModels[i*numNodes+j]));
       NetDeviceContainer Temp = pointToPoint.Install(srcOrbit.Get(i), dstOrbit.Get(j));
       crossDevices.Add(Temp);
     }
   }
   
-  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("10"+datarate));
+  RateErrorModel noError;
+  noError.SetRandomVariable (uv);
+  noError.SetUnit (RateErrorModel::ERROR_UNIT_PACKET);
+  noError.SetRate (0.0);
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue (std::to_string(datarate*2) + "bps"));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("0ms"));
+  pointToPoint.SetDeviceAttribute ("ReceiveErrorModel", PointerValue(&noError));
   NetDeviceContainer srcDevice = pointToPoint.Install(srcNode.Get(0), srcOrbit.Get(srcIndex));
   NetDeviceContainer dstDevice = pointToPoint.Install(dstNode.Get(0), dstOrbit.Get(dstIndex));
 
@@ -346,14 +313,7 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-  power_dB = 10*log10(power);
-  double txGain = 10*log10(efficiency*(pow(M_PI*aDiameterTx*frequency/SOL,2)));
-  double rxGain = 10*log10(efficiency*(pow(M_PI*aDiameterRx*frequency/SOL,2)));
-  fullGain = rxGain + txGain - 2*pointingLoss;
-  noise = 10*log10(bandwidth*boltzmann) + noiseFigure + 10*log10(290 + (noiseTemperature - 290)*pow(10, -noiseFigure/10));
-  frequency = frequency;
-  bandwidth = bandwidth;
-  variableLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
+  variableLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices, errorModels);
   //dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();

@@ -18,6 +18,20 @@ static std::map<uint32_t, uint32_t> cWndValue;
 static Ptr<OutputStreamWrapper> PosStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks1.Pos", std::ios::out);
 static Ptr<OutputStreamWrapper> PosStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks2.Pos", std::ios::out);
 
+uint32_t numNodes = 3;
+uint32_t srcIndex = 0;
+uint32_t dstIndex = 0;
+std::string transport_prot = "TcpNewReno";
+uint64_t data_mbytes = 0;
+uint32_t mtu_bytes = 400;
+std::string datarate = "5Kbps";
+std::string delay = "20ms";
+double error_p = 0.0;
+bool sack = false;
+double DSP = 1;
+double startTime = 0;
+double stopTime = 25.0;
+
 static uint32_t
 GetNodeIdFromContext (std::string context)
 {
@@ -55,41 +69,37 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
 }
 
 static void
-dynamicLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont)
+dynamicLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont, RateErrorModel errArr[])
 {
-  uint32_t NumNodes =  srcOrbit.GetN();
+  //uint32_t NumNodes =  srcOrbit.GetN();
   double dist;
   for(uint32_t i=0; i<srcOrbit.GetN(); i++)
   {
     for(uint32_t j=0; j<dstOrbit.GetN(); j++)
     {
-      //Ptr<MobilityModel> m1 = NodeList::GetNode(i)->GetObject<MobilityModel>();
-      //Ptr<MobilityModel> m2 = NodeList::GetNode(j)->GetObject<MobilityModel>();
-      //dist = m1->GetDistanceFrom(m2);
       dist = ns3::MobilityHelper::GetDistanceSquaredBetween(srcOrbit.Get(i), dstOrbit.Get(j));
-      //int devIndex = i+(j-NumNodes/2);
-      
-      int devIndex = 2*(NumNodes*i+j);
-      //for(uint32_t k=0; k<devCont.GetN(); k++){
-      //uint32_t devIndex = k;
+      int errorIndex = numNodes*i+j;
+      ///int devIndex = 2*(NumNodes*i+j);
+      int devIndex = 2*errorIndex;
       int32_t intIndex =  srcOrbit.Get(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
-      //NS_LOG_INFO("Distance between node "<<i<<" and node "<<j<<" is: "<<dist);
-      //NS_LOG_INFO("i="<<i<<" j="<<j<<" devIndex="<<devIndex<<" intIndex="<<intIndex<<" numInt="<<srcOrbit.Get(i)->GetObject<Ipv4>()->GetNInterfaces());
-      //}
       if(intIndex != -1)
       {
         if(dist>31.25)
         {
           srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
+          errArr[errorIndex].SetRate(1.0);
+          //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been cut with distance squared: "<<dist);
         }
         else
         {
           srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
+          errArr[errorIndex].SetRate(error_p);
+          //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been established with distance squared: "<<dist);
         }
       }
     }
   }
-  Simulator::Schedule(Period, dynamicLinks, Period, srcOrbit, dstOrbit, devCont);
+  Simulator::Schedule(Period, dynamicLinks, Period, srcOrbit, dstOrbit, devCont, errArr);
 }
 
 static void
@@ -131,23 +141,6 @@ PrintPos(Ptr<const MobilityModel> mob)
 
 int main(int argc, char *argv[])
 {
-  uint32_t numNodes = 3;
-  uint32_t srcIndex = 0;
-  uint32_t dstIndex = 0;
-  std::string transport_prot = "TcpNewReno";
-  uint64_t data_mbytes = 0;
-  uint32_t mtu_bytes = 400;
-  //std::string bottleneckRate = "2Kbps";
-  //std::string bottleneckDelay = "10ms";
-  std::string datarate = "5Kbps";
-  std::string delay = "20ms";
-  bool sack = false;
-  double DSP = 1;
-  double startTime = 0;
-  //double switchTime = 10.0;
-  double stopTime = 25.0;
-
-
   CommandLine cmd (__FILE__);
   cmd.AddValue ("numNodes", "Number of nodes in each orbit", numNodes);
   cmd.AddValue ("srcIndex", "Index of the sending node in the source orbit", srcIndex);
@@ -158,13 +151,11 @@ int main(int argc, char *argv[])
               "TcpLp, TcpDctcp, TcpCubic, TcpBbr", transport_prot);
   cmd.AddValue ("data", "Number of Megabytes of data to transmit (0 means unlimited)", data_mbytes);
   cmd.AddValue ("mtu", "Size of IP packets to send in bytes", mtu_bytes);
-  //cmd.AddValue ("bottleneckRate", "Datarate of bottleneck point to point links", bottleneckRate);
-  //cmd.AddValue ("bottleneckDelay", "Delay of bottleneck point to point links", bottleneckDelay);
   cmd.AddValue ("datarate", "Datarate of point to point links", datarate);
   cmd.AddValue ("delay", "Delay of point to point links", delay);
+  cmd.AddValue ("error_p", "Packet error rate", error_p);
   cmd.AddValue ("sack", "Enable or disable SACK option", sack);
   cmd.AddValue ("DSP", "Distance Sampling Period", DSP);
-  //cmd.AddValue ("switchTime", "Time for the route to swtich", switchTime);
   cmd.AddValue ("stopTime", "Time for the simulation to stop", stopTime);
   cmd.Parse (argc, argv);
   transport_prot = std::string ("ns3::") + transport_prot;
@@ -206,9 +197,6 @@ int main(int argc, char *argv[])
 
   MobilityHelper mobility;
   ListPositionAllocator posAloc;
-  /*posAloc.Add(Vector(0,0,0));posAloc.Add(Vector(15,0,0));
-  mobility.SetPositionAllocator(&posAloc);
-  mobility.Install(srcNode.Get(0)); mobility.Install(dstNode.Get(0));*/
   posAloc.Add(Vector(0,(5*(numNodes+srcIndex)),0)); mobility.SetPositionAllocator(&posAloc); mobility.Install(srcNode.Get(0));
   mobility.SetPositionAllocator("ns3::GridPositionAllocator",
                                   "MinX", DoubleValue (5),
@@ -247,18 +235,35 @@ int main(int argc, char *argv[])
     srcDevices.Add(srcTemp); dstDevices.Add(dstTemp);
   }
   
+  // Creating the error models
+  Ptr<UniformRandomVariable> uv = CreateObject<UniformRandomVariable> ();
+  uv->SetStream (50);
+  RateErrorModel errorModels[numNodes*numNodes];
+  for(int i=0; i<numNodes*numNodes; i++)
+  {
+    errorModels[i].SetRandomVariable (uv);
+    errorModels[i].SetUnit (RateErrorModel::ERROR_UNIT_PACKET);
+    errorModels[i].SetRate (error_p);
+  }
+  // Creating cross orbits links
   NetDeviceContainer crossDevices;
   for(uint32_t i=0; i<numNodes; i++)
   {
     for(uint32_t j=0; j<numNodes; j++)
     {
+      pointToPoint.SetDeviceAttribute ("ReceiveErrorModel", PointerValue(&errorModels[i*numNodes+j]));
       NetDeviceContainer Temp = pointToPoint.Install(srcOrbit.Get(i), dstOrbit.Get(j));
       crossDevices.Add(Temp);
     }
   }
   
-  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("10"+datarate));
+  RateErrorModel noError;
+  noError.SetRandomVariable (uv);
+  noError.SetUnit (RateErrorModel::ERROR_UNIT_PACKET);
+  noError.SetRate (0.0);
+  pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("100"+datarate));
   pointToPoint.SetChannelAttribute ("Delay", StringValue ("0ms"));
+  pointToPoint.SetDeviceAttribute ("ReceiveErrorModel", PointerValue(&noError));
   NetDeviceContainer srcDevice = pointToPoint.Install(srcNode.Get(0), srcOrbit.Get(srcIndex));
   NetDeviceContainer dstDevice = pointToPoint.Install(dstNode.Get(0), dstOrbit.Get(dstIndex));
 
@@ -273,7 +278,7 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-  dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices);
+  dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices, errorModels);
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
