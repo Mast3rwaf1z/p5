@@ -1,0 +1,2 @@
+Long simulations are 2000 seconds long
+Short simulations are 200 seconds long
