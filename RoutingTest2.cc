@@ -15,8 +15,32 @@ NS_LOG_COMPONENT_DEFINE ("RoutingTest2");
 
 // Static variables
 static std::map<uint32_t, bool> firstCwnd;
+static std::map<uint32_t, bool> firstSshThr;
+static std::map<uint32_t, bool> firstRtt;
+static std::map<uint32_t, bool> firstRto;
+static std::map<uint32_t, bool> firstCongState;
 static std::map<uint32_t, Ptr<OutputStreamWrapper>> cWndStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> ssThreshStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> rttStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> rtoStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextTxStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextRxStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> inFlightStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> congStateStream;
 static std::map<uint32_t, uint32_t> cWndValue;
+static std::map<uint32_t, uint32_t> ssThreshValue;
+static bool goodputSetup = false;
+static uint32_t goodput = 0;
+static uint32_t goodput2 = 0;
+static Ptr<OutputStreamWrapper> goodputStream;
+static Ptr<OutputStreamWrapper> goodputStream2;
+static Ptr<OutputStreamWrapper> goodputStreamDetailed;
+static uint32_t throughput;
+static Ptr<OutputStreamWrapper> throughputStream;
+static Ptr<OutputStreamWrapper> throughputStreamDetailed;
+static Ptr<OutputStreamWrapper> flowStatStream;
+static Ptr<OutputStreamWrapper> bytesDroppedStream;
+static Ptr<OutputStreamWrapper> packetsDroppedStream;
 
 // Adjustable variables
 std::string transport_prot = "TcpNewReno";
@@ -67,6 +91,112 @@ CwndTracer (std::string context,  uint32_t oldval, uint32_t newval)
   *cWndStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
   cWndValue[nodeId] = newval;
   //NS_LOG_LOGIC("Finished CwndTracer");
+
+  if (goodputSetup)
+  {
+    *goodputStream2->GetStream () << Simulator::Now().GetSeconds() << "," << goodput2 << std::endl;
+  }
+
+  /*if (!firstSshThr[nodeId])
+    {
+      *ssThreshStream[nodeId]->GetStream ()
+          << Simulator::Now ().GetSeconds () << "," << ssThreshValue[nodeId] << std::endl;
+    }*/
+}
+
+static void
+SsThreshTracer (std::string context, uint32_t oldval, uint32_t newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstSshThr[nodeId])
+    {
+      *ssThreshStream[nodeId]->GetStream () << "0.0," << oldval << std::endl;
+      firstSshThr[nodeId] = false;
+    }
+  *ssThreshStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
+  ssThreshValue[nodeId] = newval;
+
+  /*if (!firstCwnd[nodeId])
+    {
+      *cWndStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << cWndValue[nodeId] << std::endl;
+    }*/
+}
+
+static void
+RttTracer (std::string context, Time oldval, Time newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstRtt[nodeId])
+    {
+      *rttStream[nodeId]->GetStream () << "0.0," << oldval.GetSeconds () << std::endl;
+      firstRtt[nodeId] = false;
+    }
+  *rttStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval.GetSeconds () << std::endl;
+}
+
+static void
+RtoTracer (std::string context, Time oldval, Time newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstRto[nodeId])
+    {
+      *rtoStream[nodeId]->GetStream () << "0.0," << oldval.GetSeconds () << std::endl;
+      firstRto[nodeId] = false;
+    }
+  *rtoStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval.GetSeconds () << std::endl;
+}
+
+static void
+NextTxTracer (std::string context, [[maybe_unused]] SequenceNumber32 old, SequenceNumber32 nextTx)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  *nextTxStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << nextTx << std::endl;
+}
+
+static void
+InFlightTracer (std::string context, [[maybe_unused]] uint32_t old, uint32_t inFlight)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  *inFlightStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << inFlight << std::endl;
+}
+
+static void
+NextRxTracer (std::string context, [[maybe_unused]] SequenceNumber32 old, SequenceNumber32 nextRx)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  *nextRxStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << nextRx << std::endl;
+}
+
+static void
+CongStateTracer (std::string context, TcpSocketState::TcpCongState_t oldval, TcpSocketState::TcpCongState_t newval)
+{
+  /**CA_OPEN(0),      < Normal state, no dubious events */
+  /**CA_DISORDER(1),  < In all the respects it is "Open",
+                     *  but requires a bit more attention. It is entered when
+                     *  we see some SACKs or dupacks. It is split of "Open" */
+  /**CA_CWR(2),       < cWnd was reduced due to some congestion notification
+                     *  event, such as ECN, ICMP source quench, local device
+                     *  congestion. */
+  /**CA_RECOVERY(3),  < CWND was reduced, we are fast-retransmitting. */
+  /**CA_LOSS(4),      < CWND was reduced due to RTO timeout or SACK reneging. */
+
+  //NS_LOG_INFO(Simulator::Now().GetSeconds()<<" New congstate value: "<<newval);
+  //NS_LOG_INFO(Simulator::Now().GetSeconds()<<" Old congState value: "<<oldval);
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstCongState[nodeId])
+    {
+      *congStateStream[nodeId]->GetStream () << "0.0," << oldval << std::endl;
+      firstCongState[nodeId] = false;
+    }
+  *congStateStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
+  //ssThreshValue[nodeId] = newval;
 }
 
 static void
@@ -78,6 +208,215 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
   Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow",
                    MakeCallback (&CwndTracer));
   NS_LOG_LOGIC("Finished TraceCwnd");
+}
+
+static void
+TraceSsThresh (std::string ssthresh_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  ssThreshStream[nodeId] = ascii.CreateFileStream (ssthresh_tr_file_name.c_str ());
+  *ssThreshStream[nodeId]->GetStream () << "Time,Threshold" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/SlowStartThreshold",
+                   MakeCallback (&SsThreshTracer));
+}
+
+static void
+TraceRtt (std::string rtt_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  rttStream[nodeId] = ascii.CreateFileStream (rtt_tr_file_name.c_str ());
+  *rttStream[nodeId]->GetStream () << "Time,RTT" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/RTT",
+                   MakeCallback (&RttTracer));
+}
+
+static void
+TraceRto (std::string rto_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  rtoStream[nodeId] = ascii.CreateFileStream (rto_tr_file_name.c_str ());
+  *rtoStream[nodeId]->GetStream () << "Time,RTO" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/RTO",
+                   MakeCallback (&RtoTracer));
+}
+
+static void
+TraceNextTx (std::string next_tx_seq_file_name, uint32_t nodeId)
+{
+  //NS_LOG_INFO("NOTICE ME************Reached the TraceNextTx function");
+  AsciiTraceHelper ascii;
+  nextTxStream[nodeId] = ascii.CreateFileStream (next_tx_seq_file_name.c_str ());
+  *nextTxStream[nodeId]->GetStream () << "Time,Sequence number of next packet" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/NextTxSequence",
+                   MakeCallback (&NextTxTracer));
+}
+
+static void
+TraceInFlight (std::string in_flight_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  inFlightStream[nodeId] = ascii.CreateFileStream (in_flight_file_name.c_str ());
+  *inFlightStream[nodeId]->GetStream () << "Time,Bytes" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/BytesInFlight",
+                   MakeCallback (&InFlightTracer));
+}
+
+static void
+TraceNextRx (std::string next_rx_seq_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  nextRxStream[nodeId] = ascii.CreateFileStream (next_rx_seq_file_name.c_str ());
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) +
+                       "/$ns3::TcpL4Protocol/SocketList/1/RxBuffer/NextRxSequence",
+                   MakeCallback (&NextRxTracer));
+}
+
+static void
+TraceCongState (std::string tr_file_name, uint32_t nodeId)
+{
+  NS_LOG_LOGIC("Called TraceCwnd");
+  AsciiTraceHelper ascii;
+  congStateStream[nodeId] = ascii.CreateFileStream (tr_file_name.c_str ());
+  *congStateStream[nodeId]->GetStream () << "Time,State" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/CongState",
+                   MakeCallback (&CongStateTracer));
+  NS_LOG_LOGIC("Finished TraceCwnd");
+}
+
+static void
+DetailedGoodputTracer(std::string context, Ptr<const Packet> packet)
+{
+  //NS_LOG_INFO(Simulator::Now().GetSeconds() << ": Got packet with size: " << packet->GetSize());
+  *goodputStreamDetailed->GetStream () << Simulator::Now().GetSeconds() << "," << packet->GetSize() << std::endl;
+  goodput = goodput + packet->GetSize();
+  goodput2 = goodput2 + packet->GetSize();
+}
+
+static void
+GoodputTracer()
+{
+  *goodputStream->GetStream () << Simulator::Now().GetSeconds() << "," << goodput << std::endl;
+  goodput = 0;
+  Simulator::Schedule(Seconds(1), GoodputTracer);
+}
+
+static void
+TraceGoodput(std::string tr_file_dir, uint32_t nodeId)
+{
+  std::string tr_file_name = tr_file_dir + "goodput.data";
+  std::string tr_file_name2 = tr_file_dir + "goodput2.data";
+  std::string tr_file_name_detailed = tr_file_dir + "goodput-Detailed.data";
+  AsciiTraceHelper ascii;
+  goodputStream = ascii.CreateFileStream (tr_file_name.c_str ());
+  goodputStream2 = ascii.CreateFileStream (tr_file_name2.c_str ());
+  goodputStreamDetailed = ascii.CreateFileStream (tr_file_name_detailed.c_str ());
+  *goodputStream->GetStream () << "Time,Goodput" << std::endl;
+  *goodputStream2->GetStream () << "Time,Goodput" << std::endl;
+  *goodputStream2->GetStream () << "0,0" << std::endl;
+  *goodputStreamDetailed->GetStream () << "Time,Goodput" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/DeviceList/0/$ns3::PointToPointNetDevice/PhyRxEnd",
+                   MakeCallback (&DetailedGoodputTracer));
+  Simulator::Schedule(Seconds(1), GoodputTracer);
+  Simulator::Schedule(Seconds(stopTime-0.001), GoodputTracer);
+  goodputSetup = true;
+}
+
+static void
+DetailedThroughputTracer(std::string context, Ptr<const Packet> packet)
+{
+  //NS_LOG_INFO(Simulator::Now().GetSeconds() << ": Got packet with size: " << packet->GetSize());
+  *throughputStreamDetailed->GetStream () << Simulator::Now().GetSeconds() << "," << packet->GetSize() << std::endl;
+  throughput = throughput + packet->GetSize();
+}
+
+static void
+ThroughputTracer()
+{
+  *throughputStream->GetStream () << Simulator::Now().GetSeconds() << "," << throughput << std::endl;
+  throughput = 0;
+  Simulator::Schedule(Seconds(1), ThroughputTracer);
+}
+
+static void
+TraceThroughput(std::string tr_file_dir, uint32_t nodeId)
+{
+  std::string tr_file_name = tr_file_dir + "throughput.data";
+  std::string tr_file_name_detailed = tr_file_dir + "throughput-Detailed.data";
+  AsciiTraceHelper ascii;
+  throughputStream = ascii.CreateFileStream (tr_file_name.c_str ());
+  throughputStreamDetailed = ascii.CreateFileStream (tr_file_name_detailed.c_str ());
+  *throughputStream->GetStream () << "Time,throughput" << std::endl;
+  *throughputStreamDetailed->GetStream () << "Time,throughput" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/DeviceList/0/$ns3::PointToPointNetDevice/PhyTxBegin",
+                   MakeCallback (&DetailedThroughputTracer));
+  Simulator::Schedule(Seconds(1), ThroughputTracer);
+  Simulator::Schedule(Seconds(stopTime-0.001), ThroughputTracer);
+}
+
+static void
+RecordFlowStats(ns3::Time Period, Ptr<FlowMonitor> monitor)
+{
+  //NS_LOG_INFO("Started RecordFlowStats");
+  monitor->CheckForLostPackets();
+  FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats ();
+  auto itr = stats.begin ();
+  std::vector<uint64_t> BD = itr->second.bytesDropped;
+  std::vector<uint32_t> PD = itr->second.packetsDropped;
+  std::string BDString = "";
+  std::string PDString = "";
+  //NS_LOG_INFO("Size of the BD vector is " << BD.size());
+  //NS_LOG_INFO("Size of the PD vector is " << PD.size());
+  *flowStatStream->GetStream () << Simulator::Now().GetSeconds() << "," << itr->second.lostPackets << "," << itr->second.rxBytes << "," << itr->second.rxPackets << "," << itr->second.txBytes << "," << itr->second.rxPackets << std::endl;
+  for(uint i=0; i<BD.size(); i++)
+  {
+    BDString = BDString + "," + std::to_string(BD[i]);
+  }
+  for(uint i=BD.size(); i<9; i++)
+  {
+    BDString = BDString + ",0";
+  }
+  for(uint i=0; i<PD.size(); i++)
+  {
+    PDString = PDString + "," + std::to_string(PD[i]);
+  }
+  for(uint i=PD.size(); i<9; i++)
+  {
+    PDString = PDString + ",0";
+  }
+  *bytesDroppedStream->GetStream () << Simulator::Now().GetSeconds() << BDString << std::endl;
+  *packetsDroppedStream->GetStream () << Simulator::Now().GetSeconds() << PDString << std::endl;
+  /*if(BD.size() == 5)
+  {
+    *bytesDroppedStream->GetStream () << Simulator::Now().GetSeconds() << "," << BD[0] << "," << BD[1] << "," << BD[2] << "," << BD[3] << "," << BD[4] << "," << BD[5] << ",0,0,0" << std::endl;
+    *packetsDroppedStream->GetStream () << Simulator::Now().GetSeconds() << "," << PD[0] << "," << PD[1] << "," << PD[2] << "," << PD[3] << "," << PD[4] << "," << PD[5] << ",0,0,0" <<  std::endl;
+  }*/
+  //*bytesDroppedStream->GetStream () << Simulator::Now().GetSeconds() << "," << BD[0] << "," << BD[1] << "," << BD[2] << "," << BD[3] << "," << BD[4] << "," << BD[5] << "," << BD[6] << "," << BD[7] << "," << BD[8] << std::endl;
+  //*packetsDroppedStream->GetStream () << Simulator::Now().GetSeconds() << "," << PD[0] << "," << PD[1] << "," << PD[2] << "," << PD[3] << "," << PD[4] << "," << PD[5] << "," << PD[6] << "," << PD[7] << "," << PD[8] << std::endl;
+  //Time curTime = Now ();
+  //std::ofstream thr (tp_tr_file_name, std::ios::out | std::ios::app);
+  //thr <<  curTime << " " << 8 * (itr->second.rxBytes - prev) / (1000 * 1000 * (curTime.GetSeconds () -     prevTime.GetSeconds ())) << std::endl;
+
+  //prevTime = curTime;
+  //prev = itr->second.rxBytes;
+  Simulator::Schedule (Period, RecordFlowStats, Period, monitor);
+}
+
+static void
+TraceFlowStats(std::string tr_file_dir, ns3::Time Period, Ptr<FlowMonitor> monitor)
+{
+  //NS_LOG_INFO("Started TraceFlowStats");
+  std::string tr_file_name1 = tr_file_dir + "flowStats.data";
+  std::string tr_file_name2 = tr_file_dir + "bytesDropped.data";
+  std::string tr_file_name3 = tr_file_dir + "packetsDropped.data";
+  AsciiTraceHelper ascii;
+  flowStatStream = ascii.CreateFileStream(tr_file_name1.c_str ());
+  *flowStatStream->GetStream () << "Time,Packets Lost,rxBytes,rxPackets,txBytes,txPackets" << std::endl;
+  bytesDroppedStream = ascii.CreateFileStream(tr_file_name2.c_str ());
+  *bytesDroppedStream->GetStream () << "Time,NO_ROUTE,TTL_EXPIRE,BAD_CHECKSUM,QUEUE,QUEUE_DISC,INTERFACE_DOWN,ROUTE_ERROR,FRAGMENT_TIMEOUT,INVALID_REASON" << std::endl;
+  packetsDroppedStream = ascii.CreateFileStream(tr_file_name3.c_str ());
+  *packetsDroppedStream->GetStream () << "Time,NO_ROUTE,TTL_EXPIRE,BAD_CHECKSUM,QUEUE,QUEUE_DISC,INTERFACE_DOWN,ROUTE_ERROR,FRAGMENT_TIMEOUT,INVALID_REASON" << std::endl;
+  //NS_LOG_INFO("Finished TraceFlowStats");
+  RecordFlowStats(Period, monitor);
 }
 
 static void
@@ -185,7 +524,7 @@ int main(int argc, char *argv[])
   cmd.AddValue ("bottleneckDelay", "Delay of bottleneck point to point links", bottleneckDelay);
   cmd.AddValue ("datarate", "Datarate of point to point links", datarate);
   cmd.AddValue ("delay", "Delay of point to point links", delay);
-  cmd.AddValue ("dropPackets", "Drop packets in queue when route swtiching happens", dropPackets);
+  cmd.AddValue ("dropPackets", "Drop packets in queue when route switching happens", dropPackets);
   cmd.AddValue ("error_p", "Packet error rate", error_p);
   cmd.AddValue ("sack", "Enable or disable SACK option", sack);
   cmd.AddValue ("switchTime", "Start time of route switching in seconds", switchTime);
@@ -194,8 +533,22 @@ int main(int argc, char *argv[])
   cmd.Parse (argc, argv);
   transport_prot = std::string ("ns3::") + transport_prot;
   TypeId tcpTid;
-  NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
-  Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
+  // Select TCP variant
+  if (transport_prot.compare ("ns3::TcpWestwoodPlus") == 0)
+  { 
+    // TcpWestwoodPlus is not an actual TypeId name; we need TcpWestwood here
+    Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TcpWestwood::GetTypeId ()));
+    // the default protocol type in ns3::TcpWestwood is WESTWOOD
+    Config::SetDefault ("ns3::TcpWestwood::ProtocolType", EnumValue (TcpWestwood::WESTWOODPLUS));
+  }
+  else
+  {
+    TypeId tcpTid;
+    NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
+    Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
+  }
+  //NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
+  //Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
   Config::SetDefault ("ns3::TcpSocketBase::Sack", BooleanValue (sack));
   Config::SetDefault ("ns3::Ipv4GlobalRouting::RespondToInterfaceEvents", BooleanValue (true));
 
@@ -356,13 +709,33 @@ int main(int argc, char *argv[])
   pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("scratch/P5/Traces/RoutingTest2.tr"));
   pointToPoint.EnablePcapAll ("scratch/P5/Pcap/RoutingTest2/Node");
   firstCwnd[0] = true;
+  firstSshThr[0] = true;
+  firstRtt[0] = true;
+  firstRto[0] = true;
+
   //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/RoutingTest2-cwnd.data", 0);
-  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/RoutingTest2-cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/RoutingTest2/cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceSsThresh, "scratch/P5/Statistics/RoutingTest2/ssth.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRtt, "scratch/P5/Statistics/RoutingTest2/rtt.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRto, "scratch/P5/Statistics/RoutingTest2/rto.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceNextTx, "scratch/P5/Statistics/RoutingTest2/next-tx.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceInFlight, "scratch/P5/Statistics/RoutingTest2/inflight.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCongState, "scratch/P5/Statistics/RoutingTest2/congState.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceGoodput, "scratch/P5/Statistics/RoutingTest2/", dstNode.Get(0)->GetId());
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceThroughput, "scratch/P5/Statistics/RoutingTest2/", srcNode.Get(0)->GetId());
+  
+  //NS_LOG_INFO("Destination node ID: " << dstNode.Get(0)->GetId());
+  //Simulator::Schedule (Seconds (startTime+0.1), &TraceNextRx, "scratch/P5/Statistics/RoutingTest2/next-rx.data", dstNode.Get(0)->GetId());
+  //Config::Connect ("/NodeList/0/$ns3::TcpL4Protocol/SocketList/0/CongState", MakeCallback (&CongStateTracer));
+  //Simulator::Schedule (Seconds(startTime+0.0001), &Config::Connect, "/NodeList/0/$ns3::TcpL4Protocol/SocketList/0/CongState", MakeCallback (&CongStateTracer));
+
   AnimationInterface anim("scratch/P5/Animations/RoutingTest2/Animation.xml");
   //anim.EnablePacketMetadata(true);
   anim.EnableIpv4RouteTracking("scratch/P5/Animations/RoutingTest2/Routes.xml", Seconds(startTime), Seconds(stopTime), Seconds(RSP));
   FlowMonitorHelper flowHelper;
-  flowHelper.InstallAll();
+  Ptr<FlowMonitor> FM = flowHelper.InstallAll();
+  Simulator::Schedule(Seconds(1), &TraceFlowStats, "scratch/P5/Statistics/RoutingTest2/", Seconds(1), FM);
+  //NS_LOG_INFO("Scheduled FlowStats");
   Simulator::Stop(Seconds(stopTime));
   Simulator::Run ();
   flowHelper.SerializeToXmlFile("scratch/P5/Animations/RoutingTest2/FlowMonitor.xml", false, false);
