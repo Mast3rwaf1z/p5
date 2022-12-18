@@ -76,6 +76,38 @@ def PlotGoodput(Path, Derivative=False, SwitchTimes=[], DF=None):
     #plt.show()
     #plt.figure()
     return Fig,ax
+
+def PlotRTT(Path, yLim=None, SwitchTimes=[], DF=None):
+    if DF is None: DF = pd.read_csv(Path)
+    #print(DF)
+    Fig, ax = plt.subplots()
+    ax.step(DF.iloc[:,0], DF.iloc[:,1], where="post")
+    if not yLim is None:
+        ax.set_ylim(0,yLim)
+    ax.set_title("Round Trip Time")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Time (s)")
+    for i in SwitchTimes:
+        ax.axvline(i, color="tab:red", alpha=0.5)
+    #plt.show()
+    #plt.figure()
+    return Fig,ax
+
+def PlotRTO(Path, yLim=None, SwitchTimes=[], DF=None):
+    if DF is None: DF = pd.read_csv(Path)
+    #print(DF)
+    Fig, ax = plt.subplots()
+    ax.step(DF.iloc[:,0], DF.iloc[:,1], where="post")
+    if not yLim is None:
+        ax.set_ylim(0,yLim)
+    ax.set_title("Re-transmission Timeout")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Time (s)")
+    for i in SwitchTimes:
+        ax.axvline(i, color="tab:red", alpha=0.5)
+    #plt.show()
+    #plt.figure()
+    return Fig,ax
     
 def PlotCwndAndInFlight(Path, SwitchTimes=[]):
     Path1 = Path + "cwnd.data"
@@ -135,34 +167,62 @@ def RoutingTest2():
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=1Mbps --delay=10ms --transport_prot=TcpCubic --switchTime=500000 --stopTime=200"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --mtu=400 --transport_prot=TcpNewReno --switchTime=500000 --stopTime=2000"])
     
-    
-    #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpNewReno --switchTime=10 --RSP=10 --stopTime=2000"])
-    
-    Fig1,ax1 = PlotCWND("Statistics/RoutingTest2/cwnd.data", SwitchTimes=[i*10 for i in range(1,200)])
-    PlotSSThresh("Statistics/RoutingTest2/ssth.data", 50000, SwitchTimes=[i*10 for i in range(1,200)])
+    RSP=100
+    SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpNewReno --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
+    LinkBreaks = [i*RSP for i in range(1,2000//RSP)]
+    Fig1,ax1 = PlotCWND("Statistics/RoutingTest2/cwnd.data", SwitchTimes=LinkBreaks)
+    PlotSSThresh("Statistics/RoutingTest2/ssth.data", 50000, SwitchTimes=LinkBreaks)
     PlotInFlight("Statistics/RoutingTest2/inflight.data")
-    PlotGoodput("Statistics/RoutingTest2/goodput.data", SwitchTimes=[i*10 for i in range(1,200)])
-    PlotGoodput("Statistics/RoutingTest2/goodput2.data", True, SwitchTimes=[i*10 for i in range(1,200)])
+    PlotGoodput("Statistics/RoutingTest2/goodput.data", SwitchTimes=LinkBreaks)
+    PlotGoodput("Statistics/RoutingTest2/goodput2.data", True, SwitchTimes=LinkBreaks)
     PlotCwndAndInFlight("Statistics/RoutingTest2/")
     plt.show()
 
 def DynamicLinks():
-    SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --"])
-    PlotCWND("Statistics/DynamicLinks-cwnd.data")
+    """
+    --numNodes:        Number of nodes in each orbit [3]
+    --srcIndex:        Index of the sending node in the source orbit [0]
+    --dstIndex:        Index of the recieving node in the destination orbit [0]
+    --transport_prot:  Transport protocol to use: TcpNewReno, TcpLinuxReno, TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, TcpBic,
+                                                  TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, TcpLp, TcpDctcp, TcpCubic, TcpBbr [TcpNewReno]
+    --data:            Number of Megabytes of data to transmit (0 means unlimited) [0]
+    --mtu:             Size of IP packets to send in bytes [400]
+    --datarate:        Datarate of point to point links [50Kbps]
+    --delay:           Delay of point to point links [10ms]
+    --error_p:         Packet error rate [0]
+    --speed:           Movement speed of the satellites in orbit (m/s) [1]
+    --ISD:             Inter-satellite distance in meters. Used for satellites in same orbit. [5]
+    --IOD:             Inter-Orbit distance in meters. Used for distance between orbits. [5]
+    --COD:             Cutoff distance for RF links in meters [31.25]
+    --sack:            Enable or disable SACK option [false]
+    --DSP:             Distance Sampling Period [1]
+    --stopTime:        Time for the simulation to stop [25]
+    """
+    #SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6"])
+    SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --transport_prot=TcpCubic --speed=12350 --ISD=926537 --IOD=2736000 --COD=2888627 --stopTime=500"])
+    LinkBreaks = [1,76,151,226,301]
+    PlotCWND("Statistics/DynamicLinks/cwnd.data", SwitchTimes=LinkBreaks)
+    PlotSSThresh("Statistics/DynamicLinks/ssth.data", yLim=50000, SwitchTimes=LinkBreaks)
+    PlotInFlight("Statistics/DynamicLinks/inflight.data")
+    PlotGoodput("Statistics/DynamicLinks/goodput.data", SwitchTimes=LinkBreaks)
+    PlotGoodput("Statistics/DynamicLinks/goodput2.data", True, SwitchTimes=LinkBreaks)
+    PlotRTT("Statistics/DynamicLinks/rtt.data", SwitchTimes=LinkBreaks)
+    PlotRTO("Statistics/DynamicLinks/rto.data", SwitchTimes=LinkBreaks)
     #print(SubReturn)
     #DF = pd.read_csv("Statistics/DynamicLinks-cwnd.data")
     #print(DF)
     #Fig, ax = plt.subplots()
     #ax.scatter(DF["Time"], DF["Window Size"])
     #Fig.show()
-    #plt.show()
+    plt.show()
 
 def VariableLinks():
     """
     --numNodes:          Number of nodes in each orbit [1]
     --srcIndex:          Index of the sending node in the source orbit [0]
     --dstIndex:          Index of the recieving node in the destination orbit [0]
-    --transport_prot:    Transport protocol to use: TcpNewReno, TcpLinuxReno, TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, TcpBic, TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, TcpLp, TcpDctcp, TcpCubic, TcpBbr [TcpNewReno]
+    --transport_prot:    Transport protocol to use: TcpNewReno, TcpLinuxReno, TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, TcpBic, 
+                                                    TcpYeah, TcpIllinois, TcpWestwood, TcpWestwoodPlus, TcpLedbat, TcpLp, TcpDctcp, TcpCubic, TcpBbr [TcpNewReno]
     --data:              Number of Megabytes of data to transmit [0]
     --mtu:               Size of IP packets to send in bytes [400]
     --error_p:           Packet error rate [0]
@@ -187,7 +247,8 @@ def VariableLinks():
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --bandwidth=10000 --speed=1000000 --noiseFigure=49 --numNodes=3"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --power=10 --speed=0 --stopTime=10 --bandwidth=50000"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --help"])
-    SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --transport_prot=TcpCubic --power=0.001 --speed=12350 --ISD=926537 --IOD=2736000 --stopTime=500 --bandwidth=50000"])
+    #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --transport_prot=TcpCubic --power=0.001 --speed=12350 --ISD=926537 --IOD=2736000 --stopTime=500 --bandwidth=50000"])
+    SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --numNodes=6 --transport_prot=TcpCubic --power=0.001 --speed=12350 --ISD=926537 --IOD=2736000 --stopTime=500 --bandwidth=50000"])
     PlotCWND("Statistics/VariableLinks/cwnd.data")
     PlotSSThresh("Statistics/VariableLinks/ssth.data")
     PlotInFlight("Statistics/VariableLinks/inflight.data")
