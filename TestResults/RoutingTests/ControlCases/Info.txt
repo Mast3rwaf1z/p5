@@ -1,0 +1,1 @@
+ns3 run "scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot={TcpAlgorithm} --switchTime=500000 --RSP=500000 --stopTime=2000"
