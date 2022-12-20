@@ -142,7 +142,7 @@ def RoutingTests():
     #Fig.show()
     #plt.show()
 
-def RoutingTest2():
+def RoutingTest2(Path):
     """
     Program Options:
     --transport_prot:   Transport protocol to use: TcpNewReno, TcpLinuxReno, TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, TcpBic,
@@ -167,15 +167,16 @@ def RoutingTest2():
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=1Mbps --delay=10ms --transport_prot=TcpCubic --switchTime=500000 --stopTime=200"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --mtu=400 --transport_prot=TcpNewReno --switchTime=500000 --stopTime=2000"])
     
-    RSP=100
-    SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpNewReno --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
-    LinkBreaks = [i*RSP for i in range(1,2000//RSP)]
-    Fig1,ax1 = PlotCWND("Statistics/RoutingTest2/cwnd.data", SwitchTimes=LinkBreaks)
-    PlotSSThresh("Statistics/RoutingTest2/ssth.data", 50000, SwitchTimes=LinkBreaks)
-    PlotInFlight("Statistics/RoutingTest2/inflight.data")
-    PlotGoodput("Statistics/RoutingTest2/goodput.data", SwitchTimes=LinkBreaks)
-    PlotGoodput("Statistics/RoutingTest2/goodput2.data", True, SwitchTimes=LinkBreaks)
-    PlotCwndAndInFlight("Statistics/RoutingTest2/")
+    #RSP=100
+    #SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpNewReno --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
+    #LinkBreaks = [i*RSP for i in range(1,2000//RSP)]
+    LinkBreaks = []
+    Fig1,ax1 = PlotCWND(Path + "cwnd.data", SwitchTimes=LinkBreaks)
+    PlotSSThresh(Path + "ssth.data", 50000, SwitchTimes=LinkBreaks)
+    PlotInFlight(Path + "inflight.data")
+    PlotGoodput(Path + "goodput.data", SwitchTimes=LinkBreaks)
+    PlotGoodput(Path + "goodput2.data", True, SwitchTimes=LinkBreaks)
+    #PlotCwndAndInFlight("Statistics/RoutingTest2/")
     plt.show()
 
 def DynamicLinks():
@@ -265,7 +266,7 @@ def TCPComparissonTest():
 if __name__=="__main__":
     #DynamicLinks()
     #PlotCWND("Statistics/RoutingTest2-cwnd.data")
-    RoutingTest2()
+    RoutingTest2("TestResults/RoutingTests/ControlCases/Cubic/")
     #VariableLinks()
     #TCPComparissonTest()
     
