@@ -30,7 +30,8 @@ def RoutingTests(Path, TCP="TcpNewReno"):
     for i in range(10):
         print(i+1)
         RSP = (i+1)*10
-        SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot={TCP} --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
+        #SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot={TCP} --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
+        SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --datarate=1Mbps --delay=10ms --bottleneckRate=1Mbps --bottleneckDelay=10ms --transport_prot={TCP} --switchTime={RSP} --RSP={RSP} --stopTime=200"])
         Cwnd.append(pd.read_csv("Statistics/RoutingTest2/cwnd.data"))
         SSThresh.append(pd.read_csv("Statistics/RoutingTest2/ssth.data"))
         InFlight.append(pd.read_csv("Statistics/RoutingTest2/inflight.data"))
@@ -122,10 +123,10 @@ def AnalyzeGoodput(Goodput, SimTime=2000):
 
 
 if __name__=="__main__":
-    #RoutingTests("TestResults/RoutingTests/RSPTests/NewReno/", TCP="TcpNewReno")
-    #RoutingTests("TestResults/RoutingTests/RSPTests/WestwoodPlus/", TCP="TcpWestwoodPlus")
-    #RoutingTests("TestResults/RoutingTests/RSPTests/Cubic/", TCP="TcpCubic")
-    RoutingTests2("TestResults/RoutingTests/DataRateTests/NewReno/", TCP="TcpNewReno")
+    RoutingTests("TestResults/RoutingTests1Mbps/RSPTests/NewReno/", TCP="TcpNewReno")
+    RoutingTests("TestResults/RoutingTests1Mbps/RSPTests/WestwoodPlus/", TCP="TcpWestwoodPlus")
+    RoutingTests("TestResults/RoutingTests1Mbps/RSPTests/Cubic/", TCP="TcpCubic")
+    #RoutingTests2("TestResults/RoutingTests/DataRateTests/NewReno/", TCP="TcpNewReno")
     #RoutingTests2("TestResults/RoutingTests/DataRateTests/WestwoodPlus/", TCP="TcpWestwoodPlus")
     #RoutingTests2("TestResults/RoutingTests/DataRateTests/Cubic/", TCP="TcpCubic")
     """

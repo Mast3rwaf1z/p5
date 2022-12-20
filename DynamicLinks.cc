@@ -13,8 +13,28 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE ("DynamicLinks");
 
 static std::map<uint32_t, bool> firstCwnd;
+static std::map<uint32_t, bool> firstSshThr;
+static std::map<uint32_t, bool> firstRtt;
+static std::map<uint32_t, bool> firstRto;
 static std::map<uint32_t, Ptr<OutputStreamWrapper>> cWndStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> ssThreshStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> rttStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> rtoStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextTxStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextRxStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> inFlightStream;
 static std::map<uint32_t, uint32_t> cWndValue;
+static std::map<uint32_t, uint32_t> ssThreshValue;
+static std::map<std::string, Ptr<OutputStreamWrapper>> linkStatus;
+static bool goodputSetup = false;
+static uint32_t goodput = 0;
+static uint32_t goodput2 = 0;
+static Ptr<OutputStreamWrapper> goodputStream;
+static Ptr<OutputStreamWrapper> goodputStream2;
+static Ptr<OutputStreamWrapper> goodputStreamDetailed;
+static uint32_t throughput;
+static Ptr<OutputStreamWrapper> throughputStream;
+static Ptr<OutputStreamWrapper> throughputStreamDetailed;
 static Ptr<OutputStreamWrapper> PosStream = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks1.Pos", std::ios::out);
 static Ptr<OutputStreamWrapper> PosStream2 = Create<OutputStreamWrapper> ("scratch/P5/Statistics/DynamicLinks2.Pos", std::ios::out);
 
@@ -24,9 +44,13 @@ uint32_t dstIndex = 0;
 std::string transport_prot = "TcpNewReno";
 uint64_t data_mbytes = 0;
 uint32_t mtu_bytes = 400;
-std::string datarate = "5Kbps";
-std::string delay = "20ms";
+std::string datarate = "50Kbps";
+std::string delay = "10ms";
 double error_p = 0.0;
+double speed = 1;
+double ISD = 5;
+double IOD = 5;
+double COD = 31.25;
 bool sack = false;
 double DSP = 1;
 double startTime = 0;
@@ -55,6 +79,64 @@ CwndTracer (std::string context,  uint32_t oldval, uint32_t newval)
   *cWndStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
   cWndValue[nodeId] = newval;
   //NS_LOG_LOGIC("Finished CwndTracer");
+
+  if (goodputSetup)
+  {
+    *goodputStream2->GetStream () << Simulator::Now().GetSeconds() << "," << goodput2 << std::endl;
+  }
+}
+
+static void
+SsThreshTracer (std::string context, uint32_t oldval, uint32_t newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstSshThr[nodeId])
+    {
+      *ssThreshStream[nodeId]->GetStream () << "0.0," << oldval << std::endl;
+      firstSshThr[nodeId] = false;
+    }
+  *ssThreshStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
+  ssThreshValue[nodeId] = newval;
+
+  /*if (!firstCwnd[nodeId])
+    {
+      *cWndStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << cWndValue[nodeId] << std::endl;
+    }*/
+}
+
+static void
+RttTracer (std::string context, Time oldval, Time newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstRtt[nodeId])
+    {
+      *rttStream[nodeId]->GetStream () << "0.0," << oldval.GetSeconds () << std::endl;
+      firstRtt[nodeId] = false;
+    }
+  *rttStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval.GetSeconds () << std::endl;
+}
+
+static void
+RtoTracer (std::string context, Time oldval, Time newval)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  if (firstRto[nodeId])
+    {
+      *rtoStream[nodeId]->GetStream () << "0.0," << oldval.GetSeconds () << std::endl;
+      firstRto[nodeId] = false;
+    }
+  *rtoStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval.GetSeconds () << std::endl;
+}
+
+static void
+InFlightTracer (std::string context, [[maybe_unused]] uint32_t old, uint32_t inFlight)
+{
+  uint32_t nodeId = GetNodeIdFromContext (context);
+
+  *inFlightStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << inFlight << std::endl;
 }
 
 static void
@@ -69,37 +151,146 @@ TraceCwnd (std::string cwnd_tr_file_name, uint32_t nodeId)
 }
 
 static void
+TraceSsThresh (std::string ssthresh_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  ssThreshStream[nodeId] = ascii.CreateFileStream (ssthresh_tr_file_name.c_str ());
+  *ssThreshStream[nodeId]->GetStream () << "Time,Threshold" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/SlowStartThreshold",
+                   MakeCallback (&SsThreshTracer));
+}
+
+static void
+TraceRtt (std::string rtt_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  rttStream[nodeId] = ascii.CreateFileStream (rtt_tr_file_name.c_str ());
+  *rttStream[nodeId]->GetStream () << "Time,RTT" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/RTT",
+                   MakeCallback (&RttTracer));
+}
+
+static void
+TraceRto (std::string rto_tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  rtoStream[nodeId] = ascii.CreateFileStream (rto_tr_file_name.c_str ());
+  *rtoStream[nodeId]->GetStream () << "Time,RTO" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/RTO",
+                   MakeCallback (&RtoTracer));
+}
+
+static void
+TraceInFlight (std::string in_flight_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  inFlightStream[nodeId] = ascii.CreateFileStream (in_flight_file_name.c_str ());
+  *inFlightStream[nodeId]->GetStream () << "Time,Bytes" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/BytesInFlight",
+                   MakeCallback (&InFlightTracer));
+}
+
+static void
+DetailedGoodputTracer(std::string context, Ptr<const Packet> packet)
+{
+  //NS_LOG_INFO(Simulator::Now().GetSeconds() << ": Got packet with size: " << packet->GetSize());
+  *goodputStreamDetailed->GetStream () << Simulator::Now().GetSeconds() << "," << packet->GetSize() << std::endl;
+  goodput = goodput + packet->GetSize();
+  goodput2 = goodput2 + packet->GetSize();
+}
+
+static void
+GoodputTracer()
+{
+  *goodputStream->GetStream () << Simulator::Now().GetSeconds() << "," << goodput << std::endl;
+  goodput = 0;
+  Simulator::Schedule(Seconds(1), GoodputTracer);
+}
+
+static void
+TraceGoodput(std::string tr_file_dir, uint32_t nodeId)
+{
+  std::string tr_file_name = tr_file_dir + "goodput.data";
+  std::string tr_file_name2 = tr_file_dir + "goodput2.data";
+  std::string tr_file_name_detailed = tr_file_dir + "goodput-Detailed.data";
+  AsciiTraceHelper ascii;
+  goodputStream = ascii.CreateFileStream (tr_file_name.c_str ());
+  goodputStream2 = ascii.CreateFileStream (tr_file_name2.c_str ());
+  goodputStreamDetailed = ascii.CreateFileStream (tr_file_name_detailed.c_str ());
+  *goodputStream->GetStream () << "Time,Goodput" << std::endl;
+  *goodputStream2->GetStream () << "Time,Goodput" << std::endl;
+  *goodputStream2->GetStream () << "0,0" << std::endl;
+  *goodputStreamDetailed->GetStream () << "Time,Goodput" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/DeviceList/0/$ns3::PointToPointNetDevice/PhyRxEnd",
+                   MakeCallback (&DetailedGoodputTracer));
+  Simulator::Schedule(Seconds(1), GoodputTracer);
+  Simulator::Schedule(Seconds(stopTime-0.001), GoodputTracer);
+  goodputSetup = true;
+}
+
+static void
 dynamicLinks (ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont, RateErrorModel errArr[])
 {
   //uint32_t NumNodes =  srcOrbit.GetN();
+  std::string linkId;
   double dist;
   for(uint32_t i=0; i<srcOrbit.GetN(); i++)
   {
     for(uint32_t j=0; j<dstOrbit.GetN(); j++)
     {
-      dist = ns3::MobilityHelper::GetDistanceSquaredBetween(srcOrbit.Get(i), dstOrbit.Get(j));
+      //dist = ns3::MobilityHelper::GetDistanceSquaredBetween(srcOrbit.Get(i), dstOrbit.Get(j));
       int errorIndex = numNodes*i+j;
+      Ptr<MobilityModel> m1 = srcOrbit.Get(i)->GetObject<MobilityModel>();
+      Ptr<MobilityModel> m2 = dstOrbit.Get(j)->GetObject<MobilityModel>();
+      dist = m1->GetDistanceFrom(m2);
       ///int devIndex = 2*(NumNodes*i+j);
       int devIndex = 2*errorIndex;
       int32_t intIndex =  srcOrbit.Get(i)->GetObject<Ipv4>()->GetInterfaceForDevice(devCont.Get(devIndex));
-      if(intIndex != -1)
+      linkId = std::to_string(srcOrbit.Get(i)->GetId()) + "-" + std::to_string(dstOrbit.Get(j)->GetId());
+      //if(dist>31.25)
+      if(dist>COD)
       {
-        if(dist>31.25)
-        {
-          srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
-          errArr[errorIndex].SetRate(1.0);
-          //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been cut with distance squared: "<<dist);
-        }
-        else
-        {
-          srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
-          errArr[errorIndex].SetRate(error_p);
-          //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been established with distance squared: "<<dist);
-        }
+        srcOrbit.Get(i)->GetObject<Ipv4>()->SetDown(intIndex);
+        errArr[errorIndex].SetRate(1.0);
+        //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been cut with distance squared: "<<dist);
+        *linkStatus[linkId]->GetStream () << Simulator::Now().GetSeconds() << "," << std::to_string(dist) << ",0" << std::endl;
       }
+      else
+      {
+        srcOrbit.Get(i)->GetObject<Ipv4>()->SetUp(intIndex);
+        errArr[errorIndex].SetRate(error_p);
+        //NS_LOG_INFO(Simulator::Now().GetSeconds()<<": Route between nodes "<<i<<" and "<<j<<" has been established with distance squared: "<<dist);
+        *linkStatus[linkId]->GetStream () << Simulator::Now().GetSeconds() << "," << std::to_string(dist) << ",1" << std::endl;
+      }
+      
     }
   }
   Simulator::Schedule(Period, dynamicLinks, Period, srcOrbit, dstOrbit, devCont, errArr);
+}
+
+static void
+dynamicInit(ns3::Time Period, NodeContainer srcOrbit, NodeContainer dstOrbit, NetDeviceContainer devCont, RateErrorModel errArr[], std::string tr_file_dir)
+{
+  uint32_t srcId = 0;
+  uint32_t dstId = 0;
+  std::string nodeId;
+  std::string tr_file_name;
+  for(uint32_t i=0; i<srcOrbit.GetN(); i++)
+  {
+    for(uint32_t j=0; j<dstOrbit.GetN(); j++)
+    {
+    srcId = srcOrbit.Get(i)->GetId();
+    dstId = dstOrbit.Get(j)->GetId();
+    nodeId = std::to_string(srcId) + "-" + std::to_string(dstId);
+    tr_file_name = tr_file_dir + nodeId;
+    NS_LOG_INFO("nodeId value is: " << nodeId);
+    NS_LOG_INFO("File name is: " + tr_file_name);
+    AsciiTraceHelper ascii;
+    linkStatus[nodeId] = ascii.CreateFileStream (tr_file_name.c_str ());
+    *linkStatus[nodeId]->GetStream () << "Time,Distance,Is Up" << std::endl;
+    }
+  }
+  dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, devCont, errArr);
 }
 
 static void
@@ -154,14 +345,32 @@ int main(int argc, char *argv[])
   cmd.AddValue ("datarate", "Datarate of point to point links", datarate);
   cmd.AddValue ("delay", "Delay of point to point links", delay);
   cmd.AddValue ("error_p", "Packet error rate", error_p);
+  cmd.AddValue ("speed", "Movement speed of the satellites in orbit (m/s)", speed);
+  cmd.AddValue ("ISD", "Inter-satellite distance in meters. Used for satellites in same orbit.", ISD);
+  cmd.AddValue ("IOD", "Inter-Orbit distance in meters. Used for distance between orbits.", IOD);
+  cmd.AddValue ("COD", "Cutoff distance for RF links in meters", COD);
   cmd.AddValue ("sack", "Enable or disable SACK option", sack);
   cmd.AddValue ("DSP", "Distance Sampling Period", DSP);
   cmd.AddValue ("stopTime", "Time for the simulation to stop", stopTime);
   cmd.Parse (argc, argv);
   transport_prot = std::string ("ns3::") + transport_prot;
   TypeId tcpTid;
-  NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
-  Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
+  // Select TCP variant
+  if (transport_prot.compare ("ns3::TcpWestwoodPlus") == 0)
+  { 
+    // TcpWestwoodPlus is not an actual TypeId name; we need TcpWestwood here
+    Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TcpWestwood::GetTypeId ()));
+    // the default protocol type in ns3::TcpWestwood is WESTWOOD
+    Config::SetDefault ("ns3::TcpWestwood::ProtocolType", EnumValue (TcpWestwood::WESTWOODPLUS));
+  }
+  else
+  {
+    TypeId tcpTid;
+    NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
+    Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
+  }
+  //NS_ABORT_MSG_UNLESS (TypeId::LookupByNameFailSafe (transport_prot, &tcpTid), "TypeId " << transport_prot << " not found");
+  //Config::SetDefault ("ns3::TcpL4Protocol::SocketType", TypeIdValue (TypeId::LookupByName (transport_prot)));
   Config::SetDefault ("ns3::TcpSocketBase::Sack", BooleanValue (sack));
   Config::SetDefault ("ns3::Ipv4GlobalRouting::RespondToInterfaceEvents", BooleanValue (true));
 
@@ -197,6 +406,33 @@ int main(int argc, char *argv[])
 
   MobilityHelper mobility;
   ListPositionAllocator posAloc;
+  posAloc.Add(Vector(0,(ISD*(numNodes+srcIndex)),0)); mobility.SetPositionAllocator(&posAloc); mobility.Install(srcNode.Get(0));
+  mobility.SetPositionAllocator("ns3::GridPositionAllocator",
+                                  "MinX", DoubleValue (IOD),
+                                  "MinY", DoubleValue (ISD*(numNodes)),
+                                  "DeltaX", DoubleValue (IOD),
+                                  "DeltaY", DoubleValue (ISD),
+                                  "GridWidth", UintegerValue (1),
+                                  "LayoutType", StringValue ("RowFirst"));
+  mobility.Install(srcOrbit);
+  mobility.SetPositionAllocator("ns3::GridPositionAllocator",
+                                  "MinX", DoubleValue (2*IOD),
+                                  "MinY", DoubleValue (ISD),
+                                  "DeltaX", DoubleValue (IOD),
+                                  "DeltaY", DoubleValue (ISD),
+                                  "GridWidth", UintegerValue (1),
+                                  "LayoutType", StringValue ("RowFirst"));
+  mobility.SetMobilityModel("ns3::ConstantVelocityMobilityModel");
+  mobility.Install(dstOrbit); mobility.Install(dstNode);
+  dstNode.Get(0)->GetObject<ConstantVelocityMobilityModel>()->SetPosition(Vector(3*IOD,ISD*(1+dstIndex),0));
+  dstNode.Get(0)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,speed,0));
+  for(uint32_t i=0; i<numNodes; i++)
+  {
+    dstOrbit.Get(i)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,speed,0));
+  }
+
+  /*MobilityHelper mobility;
+  ListPositionAllocator posAloc;
   posAloc.Add(Vector(0,(5*(numNodes+srcIndex)),0)); mobility.SetPositionAllocator(&posAloc); mobility.Install(srcNode.Get(0));
   mobility.SetPositionAllocator("ns3::GridPositionAllocator",
                                   "MinX", DoubleValue (5),
@@ -220,7 +456,7 @@ int main(int argc, char *argv[])
   for(uint32_t i=0; i<numNodes; i++)
   {
     dstOrbit.Get(i)->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(0,1,0));
-  }
+  }*/
 
   PointToPointHelper pointToPoint;
   pointToPoint.SetDeviceAttribute ("DataRate", StringValue (datarate));
@@ -278,7 +514,8 @@ int main(int argc, char *argv[])
 
   Ipv4InterfaceContainer interfaces = address.Assign (devices);
 
-  dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices, errorModels);
+  dynamicInit(Seconds(DSP), srcOrbit, dstOrbit, crossDevices, errorModels, "scratch/P5/Statistics/DynamicLinks/LinkStats/");
+  //dynamicLinks(Seconds(DSP), srcOrbit, dstOrbit, crossDevices, errorModels);
 
   Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
@@ -304,7 +541,7 @@ int main(int argc, char *argv[])
   AddressValue remoteAddress (InetSocketAddress (dstNode.Get(0)->GetObject<Ipv4>()->GetAddress(1,0).GetAddress(), port));
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
   BulkSendHelper ftp ("ns3::TcpSocketFactory", Address ());
-  ftp.SetAttribute ("Remote", remoteAddress);
+  ftp.SetAttribute ("Remote", remoteAddress); 
   ftp.SetAttribute ("SendSize", UintegerValue (tcp_adu_size));
   ftp.SetAttribute ("MaxBytes", UintegerValue (data_mbytes * 1000000));
 
@@ -338,7 +575,12 @@ int main(int argc, char *argv[])
   pointToPoint.EnablePcapAll ("scratch/P5/Pcap/DynamicLinks/Node-Device");
   firstCwnd[0] = true;
   //Simulator::Schedule (Seconds (startTime + 1.00001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
-  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks-cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceCwnd, "scratch/P5/Statistics/DynamicLinks/cwnd.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceSsThresh, "scratch/P5/Statistics/DynamicLinks/ssth.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRtt, "scratch/P5/Statistics/DynamicLinks/rtt.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRto, "scratch/P5/Statistics/DynamicLinks/rto.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceInFlight, "scratch/P5/Statistics/DynamicLinks/inflight.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceGoodput, "scratch/P5/Statistics/DynamicLinks/", dstNode.Get(0)->GetId());
   AnimationInterface anim("scratch/P5/Animations/DynamicLinks/Animation.xml");
   anim.SetMobilityPollInterval(Seconds(DSP));
   //anim.EnablePacketMetadata(true);

@@ -27,6 +27,7 @@ static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextTxStream;
 static std::map<uint32_t, Ptr<OutputStreamWrapper>> nextRxStream;
 static std::map<uint32_t, Ptr<OutputStreamWrapper>> inFlightStream;
 static std::map<uint32_t, Ptr<OutputStreamWrapper>> congStateStream;
+static std::map<uint32_t, Ptr<OutputStreamWrapper>> rxDropStream;
 static std::map<uint32_t, uint32_t> cWndValue;
 static std::map<uint32_t, uint32_t> ssThreshValue;
 static bool goodputSetup = false;
@@ -196,7 +197,13 @@ CongStateTracer (std::string context, TcpSocketState::TcpCongState_t oldval, Tcp
       firstCongState[nodeId] = false;
     }
   *congStateStream[nodeId]->GetStream () << Simulator::Now ().GetSeconds () << "," << newval << std::endl;
-  //ssThreshValue[nodeId] = newval;
+}
+static void
+rxDropTracer(std::string context, Ptr<const Packet> packet)
+{
+  //NS_LOG_INFO(Simulator::Now().GetSeconds() << ": Got packet with size: " << packet->GetSize());
+  uint32_t nodeId = GetNodeIdFromContext (context);
+  *rxDropStream[nodeId]->GetStream () << Simulator::Now().GetSeconds() << "," << packet->GetSize() << std::endl;
 }
 
 static void
@@ -281,6 +288,16 @@ TraceCongState (std::string tr_file_name, uint32_t nodeId)
   Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/$ns3::TcpL4Protocol/SocketList/0/CongState",
                    MakeCallback (&CongStateTracer));
   NS_LOG_LOGIC("Finished TraceCwnd");
+}
+
+static void
+TraceRxDrop (std::string tr_file_name, uint32_t nodeId)
+{
+  AsciiTraceHelper ascii;
+  rxDropStream[nodeId] = ascii.CreateFileStream (tr_file_name.c_str ());
+  *rxDropStream[nodeId]->GetStream () << "Time,Size" << std::endl;
+  Config::Connect ("/NodeList/" + std::to_string (nodeId) + "/DeviceList/1/$ns3::PointToPointNetDevice/PhyRxDrop",
+                   MakeCallback (&rxDropTracer));
 }
 
 static void
@@ -721,6 +738,8 @@ int main(int argc, char *argv[])
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceNextTx, "scratch/P5/Statistics/RoutingTest2/next-tx.data", 0);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceInFlight, "scratch/P5/Statistics/RoutingTest2/inflight.data", 0);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceCongState, "scratch/P5/Statistics/RoutingTest2/congState.data", 0);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRxDrop, "scratch/P5/Statistics/RoutingTest2/DroppedNode2", 2);
+  Simulator::Schedule (Seconds (startTime+0.0001), &TraceRxDrop, "scratch/P5/Statistics/RoutingTest2/DroppedNode3", 3);
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceGoodput, "scratch/P5/Statistics/RoutingTest2/", dstNode.Get(0)->GetId());
   Simulator::Schedule (Seconds (startTime+0.0001), &TraceThroughput, "scratch/P5/Statistics/RoutingTest2/", srcNode.Get(0)->GetId());
   

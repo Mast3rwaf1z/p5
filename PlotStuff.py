@@ -142,7 +142,7 @@ def RoutingTests():
     #Fig.show()
     #plt.show()
 
-def RoutingTest2():
+def RoutingTest2(RSP=100):
     """
     Program Options:
     --transport_prot:   Transport protocol to use: TcpNewReno, TcpLinuxReno, TcpHybla, TcpHighSpeed, TcpHtcp, TcpVegas, TcpScalable, TcpVeno, TcpBic,
@@ -167,15 +167,19 @@ def RoutingTest2():
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=1Mbps --delay=10ms --transport_prot=TcpCubic --switchTime=500000 --stopTime=200"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/RoutingTest2.cc --datarate=50Kbps --delay=10ms --mtu=400 --transport_prot=TcpNewReno --switchTime=500000 --stopTime=2000"])
     
-    RSP=100
-    SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpNewReno --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
-    LinkBreaks = [i*RSP for i in range(1,2000//RSP)]
+    #RSP=100
+    #SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --bottleneckRate=50Kbps --bottleneckDelay=10ms --transport_prot=TcpWestwoodPlus --switchTime={RSP} --RSP={RSP} --stopTime=2000"])
+    #LinkBreaks = [i*RSP for i in range(1,2000//RSP)]
+    #SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --datarate=1024Kbps --delay=10ms --bottleneckRate=1024Kbps --bottleneckDelay=10ms --transport_prot=TcpCubic --switchTime=500000 --RSP=500000 --stopTime=600"])
+    SubReturn = subprocess.run(["ns3", "run", f"scratch/RoutingTest2.cc --datarate=1Mbps --delay=10ms --bottleneckRate=1Mbps --bottleneckDelay=10ms --transport_prot=TcpCubic --switchTime=500000 --RSP=500000 --stopTime=200"])
+    LinkBreaks = []
     Fig1,ax1 = PlotCWND("Statistics/RoutingTest2/cwnd.data", SwitchTimes=LinkBreaks)
     PlotSSThresh("Statistics/RoutingTest2/ssth.data", 50000, SwitchTimes=LinkBreaks)
     PlotInFlight("Statistics/RoutingTest2/inflight.data")
     PlotGoodput("Statistics/RoutingTest2/goodput.data", SwitchTimes=LinkBreaks)
     PlotGoodput("Statistics/RoutingTest2/goodput2.data", True, SwitchTimes=LinkBreaks)
-    PlotCwndAndInFlight("Statistics/RoutingTest2/")
+    PlotRTT("Statistics/RoutingTest2/rtt.data")
+    #PlotCwndAndInFlight("Statistics/RoutingTest2/")
     plt.show()
 
 def DynamicLinks():
@@ -199,8 +203,12 @@ def DynamicLinks():
     --stopTime:        Time for the simulation to stop [25]
     """
     #SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6"])
-    SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --transport_prot=TcpCubic --speed=12350 --ISD=926537 --IOD=2736000 --COD=2888627 --stopTime=500"])
-    LinkBreaks = [1,76,151,226,301]
+    #SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --dstIndex=0 --transport_prot=TcpCubic --speed=12350 --ISD=926537 --IOD=2736000 --COD=2888627 --stopTime=450"])
+    #LinkBreaks = [1,76,151,226,301]
+    #SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --dstIndex=5 --transport_prot=TcpCubic --speed=12350 --ISD=926537 --IOD=2736000 --COD=2888627 --stopTime=450"])
+    #LinkBreaks = [75,150,225,300,375]
+    SubReturn = subprocess.run(["ns3", "run", "scratch/DynamicLinks.cc --numNodes=6 --dstIndex=0 --transport_prot=TcpWestwoodPlus --speed=14700 --ISD=926537 --IOD=2736000 --COD=2888627 --stopTime=378"])
+    LinkBreaks = [63,126,189,252,315]
     PlotCWND("Statistics/DynamicLinks/cwnd.data", SwitchTimes=LinkBreaks)
     PlotSSThresh("Statistics/DynamicLinks/ssth.data", yLim=50000, SwitchTimes=LinkBreaks)
     PlotInFlight("Statistics/DynamicLinks/inflight.data")
@@ -248,7 +256,10 @@ def VariableLinks():
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --power=10 --speed=0 --stopTime=10 --bandwidth=50000"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --help"])
     #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --transport_prot=TcpCubic --power=0.001 --speed=12350 --ISD=926537 --IOD=2736000 --stopTime=500 --bandwidth=50000"])
-    SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --numNodes=6 --transport_prot=TcpCubic --power=0.001 --speed=12350 --ISD=926537 --IOD=2736000 --stopTime=500 --bandwidth=50000"])
+    
+    # The arguments needed to get a link that disconnects after 75 seconds just like in DynamicLinks
+    SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --numNodes=1 --transport_prot=TcpCubic --power=0.000246 --speed=14700 --ISD=926537 --IOD=2736000 --stopTime=80 --bandwidth=50000"])
+    #SubReturn = subprocess.run(["ns3", "run", "scratch/VariableLinks.cc --numNodes=1 --transport_prot=TcpNewReno --speed=1235000 --ISD=926537 --IOD=2736000 --stopTime=80 --bandwidth=50000"])
     PlotCWND("Statistics/VariableLinks/cwnd.data")
     PlotSSThresh("Statistics/VariableLinks/ssth.data")
     PlotInFlight("Statistics/VariableLinks/inflight.data")
@@ -265,7 +276,7 @@ def TCPComparissonTest():
 if __name__=="__main__":
     #DynamicLinks()
     #PlotCWND("Statistics/RoutingTest2-cwnd.data")
-    RoutingTest2()
-    #VariableLinks()
+    #RoutingTest2()
+    VariableLinks()
     #TCPComparissonTest()
     
